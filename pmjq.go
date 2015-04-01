@@ -13,11 +13,9 @@ import (
 	"path"
 	"syscall"
 	"time"
+	"strings"
+	"strconv"
 )
-
-type State struct {
-	main_loop *fsm.FSM
-}
 
 func execution(e *fsm.Event, archive_dir string, events chan<- string, jobs <-chan *os.File) {
 	log.Println("Beginning exec")
@@ -48,9 +46,16 @@ func execution(e *fsm.Event, archive_dir string, events chan<- string, jobs <-ch
 	go func() { events <- "launched" }()
 }
 
-func book_keeping(e *fsm.Event, c chan<- string) {
-	//log.Println("Beginning book keeping")
-	//log.Println("Finished book keeping")
+func book_keeping(e *fsm.Event, cpu_check float32, c chan<- string) {
+	log.Println("Beginning book keeping")
+	if cpu_check != -1 {
+		if Load_average > cpu_check { //Not launching a new job now
+			log.Println("Load average too high, going back to sleep")
+			go func() {c <- "books say sleep"}()
+			return
+		}
+	}
+	log.Println("Finished book keeping")
 	go func() { c <- "books kept" }()
 }
 
@@ -92,6 +97,25 @@ func waiting(e *fsm.Event, c chan<- string) {
 	go func() { c <- "wake-up" }()
 }
 
+
+func load_average() (float32) {
+	uptime_string,err := exec.Command("uptime").Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+	uptime_array := strings.Split(string(uptime_string)," ")
+	la_float,err := strconv.ParseFloat(uptime_array[len(uptime_array)-3], 32) //Load average over the last minute,
+	//see man page for uptime(2)
+	if err != nil{
+		log.Fatal(err)
+	}
+	return float32(la_float)
+}
+
+
+/*GLOBAL VARIABLE*/
+var Load_average = float32(-1) //Load average of the system over the last minute , updated by a goroutine, read by the book-keeper if -C option is passed
+
 func main() {
 	/*The main loop is a Finite State Machine.
 	FIXME: draw the machine
@@ -110,6 +134,7 @@ Options:
         -o archive    Finished jobs are archived in this directory.
 	`
 	arguments, err := docopt.Parse(usage, nil, true, "Poor Man's Job Queue, initial dev version.", false)
+	load_average()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -118,6 +143,21 @@ Options:
 	if arguments["-o"] != nil {
 		archive_dir = arguments["-o"].(string)
 	}
+	cpu_check := float32(-1)
+	if arguments["-C"] != nil {
+		f, err := strconv.ParseFloat(arguments["-C"].(string), 32)
+		cpu_check = float32(f)
+		if err != nil{
+			log.Fatal(err)
+		}
+		go func(){
+			for true {
+				Load_average = load_average()
+				log.Printf("Load average : %f\n", Load_average)
+				time.Sleep(1000 * time.Millisecond) //FIXME put it back to 60000
+			}
+		}()
+	}
 
 	log.Println(arguments)
 	event_queue := make(chan string)
@@ -125,14 +165,15 @@ Options:
 	state := fsm.NewFSM(
 		"waiting",
 		fsm.Events{
-			{Name: "wake-up", Src: []string{"waiting"}, Dst: "book-keeping"},
-			{Name: "books kept", Src: []string{"book-keeping"}, Dst: "polling"},
-			{Name: "job found", Src: []string{"polling"}, Dst: "exec-ing"},
-			{Name: "no jobs found", Src: []string{"polling"}, Dst: "waiting"},
-			{Name: "launched", Src: []string{"exec-ing"}, Dst: "book-keeping"},
+			{Name: "wake-up",            Src: []string{"waiting"},      Dst: "book-keeping"},
+			{Name: "books kept",         Src: []string{"book-keeping"}, Dst: "polling"},
+			{Name: "books say sleep",    Src: []string{"book-keeping"}, Dst: "waiting"},
+			{Name: "job found",          Src: []string{"polling"},      Dst: "exec-ing"},
+			{Name: "no jobs found",      Src: []string{"polling"},      Dst: "waiting"},
+			{Name: "launched",           Src: []string{"exec-ing"},     Dst: "book-keeping"},
 		},
 		fsm.Callbacks{
-			"book-keeping": func(e *fsm.Event) { book_keeping(e, event_queue) },
+	        	"book-keeping": func(e *fsm.Event) { book_keeping(e, cpu_check,  event_queue) },
 			"polling":      func(e *fsm.Event) { polling(e, spool_dir, event_queue, job_queue) },
 			"waiting":      func(e *fsm.Event) { waiting(e, event_queue) },
 			"exec-ing":     func(e *fsm.Event) { execution(e, archive_dir, event_queue, job_queue) },

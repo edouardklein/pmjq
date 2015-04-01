@@ -13,7 +13,7 @@ Users submit jobs by writing an executable file in the <job-spool> directory. Th
 
 Running more than one instance of pmjq by server only makes sense if they are watching different pools. Multiple machines can mount the <job-spool> directory into their namespace and run `pmjq`, thus distributing the jobs among nodes of a cluster.
 
-`pmjq` can not watch more than one pool at once. Funny business should be handled at the filesystem level, with e.g. something similar to Plan 9 bind(2).
+`pmjq` can not watch more than one pool at once. Funny business should be handled at the filesystem level, with e.g. something similar to Plan 9's bind(2).
 
 The arguments are as follows:
 
@@ -21,7 +21,7 @@ The arguments are as follows:
 Specify the archive directory, in which executed scripts are copied. A timestamp prefix is prepended to the name of the file. Jobs with the same name that finish executing at the same second will lead to data loss : one will overwrite the other. Users are responsible for choosing appropriate names.
 
 * `-C`
-Specify (as a percentage) a CPU limit. No new job is launched if the current CPU usage is above the limit.
+Specify (as a load average) a CPU limit. No new job is launched if the load average for the last minute is above the limit.
 
 ## TODO
 
@@ -36,3 +36,5 @@ Specify (as a percentage) a CPU limit. No new job is launched if the current CPU
 * `pmjq` has no mechanism to protect against name collisions in the <job-spool> directory, and only minimal (a timestamp) mechanism in the <archive-dir> directory
 
 * The security is very very bad, write access to the file server should only be granted to trusted users.
+
+* The locale of the user running `pmjq` can interfere with `uptime`'s output, thus rendering it unparseable. A practical workaround is to set environment variable $LANG to something sensible (e.g. "en_UK.UTF-8").
