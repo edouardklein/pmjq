@@ -133,8 +133,10 @@ Options:
 	-C cpu-limit  No jobs are launched if current cpu usage is above limit.
         -o archive    Finished jobs are archived in this directory.
 	`
+	//DEBUG FIXME:REMOVE
 	arguments, err := docopt.Parse(usage, nil, true, "Poor Man's Job Queue, initial dev version.", false)
 	load_average()
+	//END DEBUG
 	if err != nil {
 		log.Fatal(err)
 	}
