@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""
+jqadd.
+
+Usage:
+jqadd <spool-dir> <cmd>
+"""
+from docopt import docopt
+import tempfile
+import hashlib
+import random
+import os
+import stat
+
+
+def main():
+    "Main function"
+    arguments = docopt(__doc__, version='jqadd 0.0')
+    fd, fname = tempfile.mkstemp(text=True)
+    f = os.fdopen(fd, 'w')
+    h = hashlib.sha1(arguments['<cmd>'].encode('utf-8')).hexdigest()
+    r = str(int(random.random()*10000))
+    f.write('#!/bin/sh\n')
+    f.write(arguments['<cmd>'])
+    os.fchmod(fd, stat.S_IRUSR | stat.S_IXUSR | stat.S_IWUSR)
+    f.close()
+    os.rename(fname, arguments['<spool-dir>']+'/'+r+'_'+h)
+
+
+if __name__ == '__main__':
+    main()

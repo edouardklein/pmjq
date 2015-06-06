@@ -3,11 +3,12 @@ pmjq(1) -- watch and process a job queue
 
 
 ## SYNOPSIS
-`pmjq` [-C <cpu-limit> -o <archive-dir>] <job-spool>
+`pmjq` [-C <cpu-limit>] [-o <archive-dir>] [-e <error-dir>] <job-spool>
+`jqadd` <job-spool> <cmd>
 
 ## DESCRIPTION
 
-The `pmjq` utility watches the directory <job-spool> and executes the scripts that exist in it. Once executed, the script is copied in the directory <archive-dir> if specified.
+`pmjq` watches the directory <job-spool> and executes the scripts that exist in it. Once successfully executed, the script is copied in the directory <archive-dir> if specified. In the case of a script failure, it is archived in <error-dir> instead, if specified.
 
 Users submit jobs by writing an executable file in the <job-spool> directory. Therefore, a minimal pmjq server is just a file server with write-access enabled. Users are responsible for choosing a naming scheme for their jobs that will avoid conflicts and collisions.
 
@@ -15,7 +16,9 @@ Running more than one instance of pmjq by server only makes sense if they are wa
 
 `pmjq` can not watch more than one pool at once. Funny business should be handled at the filesystem level, with e.g. something similar to Plan 9's bind(2).
 
-The arguments are as follows:
+The `jqadd` utility adds the provided command to the job queue by creating in the <job-spool> directory an executable file containing a /bin/sh shebang followed by <cmd>.
+
+## OPTIONS
 
 * `-o`
 Specify the archive directory, in which executed scripts are copied. A timestamp prefix is prepended to the name of the file. Jobs with the same name that finish executing at the same second will lead to data loss : one will overwrite the other. Users are responsible for choosing appropriate names.

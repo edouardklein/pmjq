@@ -17,83 +17,94 @@ import (
 	"strconv"
 )
 
-func execution(e *fsm.Event, archive_dir string, events chan<- string, jobs <-chan *os.File) {
-	log.Println("Beginning exec")
+
+
+func execution(e *fsm.Event, archive_dir string, error_dir string, events chan<- string, jobs <-chan *os.File) {
 	file := <-jobs
-	log.Printf("File to exec : %s\n", file.Name())
 	cmd := exec.Command("./" + file.Name())
 	err := cmd.Start()
 	if err != nil {
 		log.Fatal(err)
 	}
 	go func(cmd *exec.Cmd, f *os.File) {
-		log.Printf("GOROUTINE THAT WAITS FOR THE JOB %s TO FINISH\n", f.Name())
+		log.Printf("INFO: action=exec file=%s\n", f.Name())
 		err = cmd.Wait()
-		log.Printf("Command finished with error: %v... ", err)
-		if archive_dir != "" {
-			log.Println("Copying file to archive dir")
-			err := exec.Command("cp", f.Name(),
-				archive_dir+"/"+time.Now().Local().Format("20060102-15:04:05-")+path.Base(f.Name())).Run()
-			if err != nil {
-				log.Fatal(err)
+		if err == nil {
+			if archive_dir != "" {
+				log.Printf("INFO: action=archive file=%s\n", f.Name())
+				err := exec.Command("cp", f.Name(),
+					archive_dir+"/"+time.Now().Local().Format("20060102-15:04:05-")+path.Base(f.Name())).Run()
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+		} else {  // Command said something on stderr
+			log.Printf("WARNING: event=cmd_error file=%s error=%v", f.Name(), err)
+			if error_dir != "" {
+				log.Printf("WARNING: action=error_archive file=%s\n", f.Name())
+				err := exec.Command("cp", f.Name(),
+					error_dir+"/"+time.Now().Local().Format("20060102-15:04:05-")+path.Base(f.Name())).Run()
+				if err != nil {
+					log.Fatal(err)
+				}
 			}
 		}
-		log.Printf("DONE, UNLINKING AND CLOSING FILE %", f.Name())
+		log.Printf("INFO: event=exec_end file=%s\n", f.Name())
 		syscall.Unlink(f.Name())
 		f.Close()
 	}(cmd, file)
-	log.Println("Finished launching")
 	go func() { events <- "launched" }()
 }
 
 func book_keeping(e *fsm.Event, cpu_check float32, c chan<- string) {
-	log.Println("Beginning book keeping")
+	log.Println("DEBUG: action=book_keeping")
 	if cpu_check != -1 {
 		if Load_average > cpu_check { //Not launching a new job now
-			log.Println("Load average too high, going back to sleep")
+			log.Println("WARNING: event=high_load message=Load average too high, going back to sleep without launching a new job")
 			go func() {c <- "books say sleep"}()
 			return
 		}
 	}
-	log.Println("Finished book keeping")
+	log.Println("DEBUG: event=books_kept")
 	go func() { c <- "books kept" }()
 }
 
 func get_lock(filename string) *os.File {
-	log.Println("\tTrying to get a lock...")
+	log.Printf("INFO: action=lock file=%s\n", filename)
 	file, _ := os.Open(filename) //FIXME:Check err
 	err := syscall.Flock(int(file.Fd()), C.LOCK_EX+C.LOCK_NB)
 	if err != nil { //Unable to obtain lock
-		log.Println("\tFile already locked")
+		log.Printf("INFO: event=already_locked file=%s", filename)
 		file.Close()
 		return nil
 	}
+	log.Printf("INFO: event=locked file=%s", filename)
 	return file
 }
 
 func polling(e *fsm.Event, spool_dir string, events chan<- string, jobs chan<- *os.File) {
-	log.Println("Beginning polling")
+	log.Println("DEBUG: action=polling")
 	entries, _ := ioutil.ReadDir(spool_dir) //FIXME:Check err
 	for _, file_info := range entries {
-		log.Printf("Analyzing file: \t %s\n", file_info.Name())
+		log.Printf("INFO: event=file_found file=%s\n", file_info.Name())
 		//FIXME: check x permission
 		file := get_lock(spool_dir + "/" + file_info.Name())
 		if file != nil {
-			log.Printf("\tJob found: %s\n", file_info.Name())
+			log.Printf("INFO: event=job_found file=%s\n", file_info.Name())
 			go func() { jobs <- file }()
 			go func() { events <- "job found" }()
 			return
 		}
 	}
-	log.Println("Done polling")
+	log.Println("DEBUG: event=done_polling")
 	go func() { events <- "no jobs found" }()
 
 }
 
 func waiting(e *fsm.Event, c chan<- string) {
-	log.Println("Starting to wait")
+	log.Println("DEBUG: action=waiting")
 	time.Sleep(2000 * time.Millisecond)
-	log.Println("Waking up")
+	log.Println("DEBUG: event=waking_up")
 	go func() { c <- "wake-up" }()
 }
 
@@ -123,20 +134,19 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	usage := `pmjq
 Usage:
-	pmjq [-C cpu-limit] [-o archive] <spool-dir>
+	pmjq [-C <cpu-limit>] [-o <archive-dir>] [-e <error-dir>] <spool-dir>
 	pmjq -h | --help
 	pmjq --version
-	
+
 Options:
 	-h --help     Show this screen.
-        --version     Show version.
+  --version     Show version.
 	-C cpu-limit  No jobs are launched if current cpu usage is above limit.
-        -o archive    Finished jobs are archived in this directory.
+  -o archive    Finished jobs are archived in this directory.
+  -e error      Jobs that failed are archived in this directory
 	`
-	//DEBUG FIXME:REMOVE
 	arguments, err := docopt.Parse(usage, nil, true, "Poor Man's Job Queue, initial dev version.", false)
-	load_average()
-	//END DEBUG
+	//load_average()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -144,6 +154,10 @@ Options:
 	archive_dir := ""
 	if arguments["-o"] != nil {
 		archive_dir = arguments["-o"].(string)
+	}
+	error_dir := ""
+	if arguments["-e"] != nil {
+		error_dir = arguments["-e"].(string)
 	}
 	cpu_check := float32(-1)
 	if arguments["-C"] != nil {
@@ -155,13 +169,13 @@ Options:
 		go func(){
 			for true {
 				Load_average = load_average()
-				log.Printf("Load average : %f\n", Load_average)
-				time.Sleep(1000 * time.Millisecond) //FIXME put it back to 60000
+				log.Printf("INFO: load_average=%f\n", Load_average)
+				time.Sleep(5000 * time.Millisecond) //FIXME put it back to 60000
 			}
 		}()
 	}
 
-	log.Println(arguments)
+	//log.Println(arguments)
 	event_queue := make(chan string)
 	job_queue := make(chan *os.File)
 	state := fsm.NewFSM(
@@ -178,7 +192,7 @@ Options:
 	        	"book-keeping": func(e *fsm.Event) { book_keeping(e, cpu_check,  event_queue) },
 			"polling":      func(e *fsm.Event) { polling(e, spool_dir, event_queue, job_queue) },
 			"waiting":      func(e *fsm.Event) { waiting(e, event_queue) },
-			"exec-ing":     func(e *fsm.Event) { execution(e, archive_dir, event_queue, job_queue) },
+			"exec-ing":     func(e *fsm.Event) { execution(e, archive_dir, error_dir, event_queue, job_queue) },
 		},
 	)
 	//Event loop
