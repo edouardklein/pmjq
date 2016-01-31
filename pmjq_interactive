@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+from collections import namedtuple
+# This wrapper creates three scripts (setup.sh, launch.sh and cleanup.sh) to
+# make pmjq easier to use.
+
+Invocation = namedtuple('Invocation', 'inputs,command,outputs,pattern')
+
+def invocation_name(invocation):
+    '''Return a short unique name for the given invocation'''
+    global invocations
+    short_name = invocation.command.split(' ')[0]
+    if sum([i.command.startswith(short_name) for i in invocations]) < 2:
+        return short_name
+    return short_name+'_'+str(abs(hash(' '.join(invocation.inputs)+
+                                   invocation.command+
+                                   ' '.join(invocation.outputs))))[:3]
+
+# This part takes the information from the user, invocation by invocation.
+invocations = set()
+while True:
+    command = input('Command:')
+    if command == '':
+        break
+    inputs = tuple(sorted(input('Input dir(s):').split(' ')))
+    pattern = '(.*)'
+    if len(inputs) > 1:
+        pattern = input('Pattern (default "(.*)"):') or pattern
+    outputs = tuple(sorted(input('Output dir(s):').split(' ')))
+    invocations.add(Invocation(inputs, command, outputs, pattern))
+directories = set(d for i in invocations for d in i.inputs) |\
+              set(d for i in invocations for d in i.outputs)
+output_dirs = directories - \
+              set(d for i in invocations for d in i.inputs)  # Set of dirs that no
+# invocation reads from. This means it is a dir where token accmulate : an output dir
+
+# Create groups. One group per pmjq invocation and one per input directory
+# if there is more than one
+# and one group per global output directory.
+# A global output directory is a directory no pmjq invocation reads from,
+# and in which,
+# consequently, data will accumulate (presumably to be used
+# by a human)
+
+group_owner = {}
+groups = ['pg_'+d for d in output_dirs]
+for i in invocations:
+    groups.append('pg_'+invocation_name(i))
+    if len(i.inputs) > 1:
+        for j, d in enumerate(i.inputs):
+            groups.append('pg_'+invocation_name(i)+'_'+str(j))
+            group_owner[d] = 'pg_'+invocation_name(i)+'_'+str(j)
+    else:
+        group_owner[i.inputs[0]] = 'pg_'+invocation_name(i)
+groups = sorted(groups)
+groupadd = '\n'.join(['groupadd '+grp for grp in groups])
+
+usermod = 'usermod -a -G '+','.join(groups)+' `whoami`'
+
+
+# Create users. One user per pmjq invocation. This user belongs
+# to its own group and also to the groups of the directory it writes into.
+# The group of a directory is the group of the invocation that reads from it
+# or the group of the output directory if nobody reads from it.
+useradd = ''
+for i in sorted(invocations, key=lambda i:i.command):
+    other_groups=[]
+    for d in i.outputs:
+        try:
+            # Who is reading from d ?
+            other_groups.append(group_owner[d])
+        except KeyError:  # Nobody is reading from this dir
+            other_groups.append('pg_'+d)
+    useradd+='useradd -M -N -g {group} -G {other_groups} {user}\n'\
+        .format(group='pg_'+invocation_name(i),
+                other_groups=','.join(other_groups),
+                user='pu_'+invocation_name(i))
+
+# Create directories. A directory belongs to the invocation that reads from it.
+# If no invocation reads from it, a directory belongs to its own group and `whoami`
+mkdir_template = '''mkdir {directory}
+chmod 510 {directory}
+chown {user}:{group} {directory}
+
+'''
+mkdir = ''
+for d in sorted(directories):
+    try:
+        i = [i for i in invocations if d in i.inputs][0]  # Who reads from that dir ?
+        user = 'pu_'+invocation_name(i)
+        group = group_owner[d]
+    except IndexError:  # Nobody reads from that dir
+        user = '`whoami`'
+        group = 'pg_'+d
+    mkdir+=mkdir_template.format(directory=d,
+                                 user=user,
+                                 group=group)
+
+setup_template = '''#!/usr/bin/env sh
+{groupadd}
+
+{usermod}
+
+{useradd}
+{mkdir}'''
+
+open('setup.sh', 'w').write(setup_template.format(groupadd=groupadd,
+                                                  usermod=usermod,
+                                                  useradd=useradd,
+                                                  mkdir=mkdir))
+
+
+# Invocations differ, there is one form for the filter (one input, one output)
+# and another form for branching/merging
+launch='#!/usr/bin/env sh\n'
+for i in sorted(invocations, key=lambda i:i.command):
+    if len(i.inputs) == 1 and len(i.outputs) == 1:  # Filter style pmjq call
+        launch+='''sudo -u {user} pmjq {input} {filter} {output}\n'''\
+            .format(user='pu_'+invocation_name(i),
+                    input=i.inputs[0],
+                    filter=i.command if ' ' not in i.command else '"'+i.command+'"',
+                    output=i.outputs[0])
+    else:  # Branching and/or merging pmjq call
+        launch+='''sudo -u {user} pmjq --inputs "{pattern}" {inputs} --cmd {cmd}\n'''\
+            .format(user='pu_'+invocation_name(i),
+                    pattern=i.pattern,
+                    inputs=' '.join(i.inputs),
+                    cmd=i.command if ' ' not in i.command else '"'+i.command+'"')
+
+open('launch.sh', 'w').write(launch)
+
+
+# Cleanup
+# Removing groups
+groupdel='\n'.join('groupdel '+g for g in groups)
+
+#Removing users
+userdel='\n'.join('userdel pu_'+invocation_name(i)
+                  for i in sorted(invocations, key=lambda i:i.command))
+
+#Remonving the dirs
+rm='\n'.join('rm -r '+d for d in sorted(directories))
+
+cleanup_template = '''#!/usr/bin/env sh
+{groupdel}
+
+{userdel}
+
+{rm}
+'''
+
+open('cleanup.sh', 'w').write(cleanup_template.format(groupdel=groupdel,
+                                                      userdel=userdel,
+                                                      rm=rm))

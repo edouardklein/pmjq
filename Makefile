@@ -23,3 +23,8 @@ README.md: doc/pmjq.1.ronn
 clean:
 	rm doc/pmjq.1 doc/pmjq.1.html
 
+test:
+	python3 test.py
+
+elephantsdream.ogv:
+	curl "https://upload.wikimedia.org/wikipedia/commons/5/5a/Elephants_Dream_1024.avi.530tow720vbr1200soft-targetabr200.ogv" > elephantsdream.ogv	

@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+import sys
+import re
+#from mkdir dir => place dir
+#from useradd user => transition user
+#from useradd -G group user and chown :group dir => user->dir transition writes in place
+#from chown user dir: dir->user (transition reads from place)
+
+places = []
+transitions = []
+place_trans_edges = []
+user2groups = {}
+group2dir = {}
+trans_place_edges = []
+
+for line in sys.stdin.readlines():
+    m = re.match('^mkdir (.*)$', line)
+    if m:
+        places.append(m.group(1))
+
+    m = re.match('^useradd .* pu_(.*)$', line)
+    if m:
+        transitions.append(m.group(1))
+
+    m = re.match('^chown pu_(.*):pg_\S* (.*)$', line)
+    if m:
+        place_trans_edges.append('"'+m.group(2)+'"->"'+m.group(1)+'";')
+
+    m = re.match('^useradd .* -G (.*) pu_(.*)$', line)
+    if m:
+        user2groups[m.group(2)] = list(map(lambda x: x[3:], m.group(1).split(',')))
+    m = re.match('^chown .*:pg_(\S*) (.*)$', line)
+    if m:
+        group2dir[m.group(1)] = m.group(2)
+
+for user in sorted(user2groups):
+    for group in sorted(user2groups[user]):
+        trans_place_edges.append('"'+user+'"->"'+group2dir[group]+'";')
+
+
+# Dot<->Petri net template from http://thegarywilson.com/blog/2011/drawing-petri-nets/
+dot_template = '''digraph G {{
+subgraph place {{
+graph [shape=circle,color=gray];
+node [shape=circle];
+{places}
+}}
+
+subgraph transitions {{
+node [shape=rect];
+{transitions}
+}}
+
+{place_trans_edges}
+
+{trans_place_edges}
+}}'''
+
+print(dot_template.format(places='\n'.join('"'+p+'";' for p in places),
+                          transitions='\n'.join('"'+t+'";' for t in transitions),
+                          place_trans_edges='\n'.join(place_trans_edges),
+                          trans_place_edges='\n'.join(trans_place_edges)))
+sys.stdout.flush()
