@@ -11,13 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
-	"strings"
-	"strconv"
 )
-
-
 
 func execution(e *fsm.Event, archive_dir string, error_dir string, events chan<- string, jobs <-chan *os.File) {
 	file := <-jobs
@@ -38,7 +36,7 @@ func execution(e *fsm.Event, archive_dir string, error_dir string, events chan<-
 					log.Fatal(err)
 				}
 			}
-		} else {  // Command said something on stderr
+		} else { // Command said something on stderr
 			log.Printf("WARNING: event=cmd_error file=%s error=%v", f.Name(), err)
 			if error_dir != "" {
 				log.Printf("WARNING: action=error_archive file=%s\n", f.Name())
@@ -61,7 +59,7 @@ func book_keeping(e *fsm.Event, cpu_check float32, c chan<- string) {
 	if cpu_check != -1 {
 		if Load_average > cpu_check { //Not launching a new job now
 			log.Println("WARNING: event=high_load message=Load average too high, going back to sleep without launching a new job")
-			go func() {c <- "books say sleep"}()
+			go func() { c <- "books say sleep" }()
 			return
 		}
 	}
@@ -108,21 +106,19 @@ func waiting(e *fsm.Event, c chan<- string) {
 	go func() { c <- "wake-up" }()
 }
 
-
-func load_average() (float32) {
-	uptime_string,err := exec.Command("uptime").Output()
+func load_average() float32 {
+	uptime_string, err := exec.Command("uptime").Output()
 	if err != nil {
 		log.Fatal(err)
 	}
-	uptime_array := strings.Split(string(uptime_string)," ")
-	la_float,err := strconv.ParseFloat(uptime_array[len(uptime_array)-3], 32) //Load average over the last minute,
+	uptime_array := strings.Split(string(uptime_string), " ")
+	la_float, err := strconv.ParseFloat(uptime_array[len(uptime_array)-3], 32) //Load average over the last minute,
 	//see man page for uptime(2)
-	if err != nil{
+	if err != nil {
 		log.Fatal(err)
 	}
 	return float32(la_float)
 }
-
 
 /*GLOBAL VARIABLE*/
 var Load_average = float32(-1) //Load average of the system over the last minute , updated by a goroutine, read by the book-keeper if -C option is passed
@@ -134,16 +130,17 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	usage := `pmjq
 Usage:
-	pmjq [-C <cpu-limit>] [-o <archive-dir>] [-e <error-dir>] <spool-dir>
+	pmjq [options] <input-dir> <filter> <output-dir>
+  pmjq [options] --inputs <pattern> <indir>... --cmd <cmd>
 	pmjq -h | --help
 	pmjq --version
 
 Options:
-	-h --help     Show this screen.
-  --version     Show version.
-	-C cpu-limit  No jobs are launched if current cpu usage is above limit.
-  -o archive    Finished jobs are archived in this directory.
-  -e error      Jobs that failed are archived in this directory
+	-h --help       Show this screen.
+  --version       Show version.
+	-C <cpu-limit>  No jobs are launched if current load is above limit.
+  --max-load <max-load> <max-cmd>  Command to launch if load goes above the upper limit.
+  --min-load <min-load> <min-cmd>  Command to launch if load stays below lower limit.
 	`
 	arguments, err := docopt.Parse(usage, nil, true, "Poor Man's Job Queue, initial dev version.", false)
 	//load_average()
@@ -163,10 +160,10 @@ Options:
 	if arguments["-C"] != nil {
 		f, err := strconv.ParseFloat(arguments["-C"].(string), 32)
 		cpu_check = float32(f)
-		if err != nil{
+		if err != nil {
 			log.Fatal(err)
 		}
-		go func(){
+		go func() {
 			for true {
 				Load_average = load_average()
 				log.Printf("INFO: load_average=%f\n", Load_average)
@@ -181,15 +178,15 @@ Options:
 	state := fsm.NewFSM(
 		"waiting",
 		fsm.Events{
-			{Name: "wake-up",            Src: []string{"waiting"},      Dst: "book-keeping"},
-			{Name: "books kept",         Src: []string{"book-keeping"}, Dst: "polling"},
-			{Name: "books say sleep",    Src: []string{"book-keeping"}, Dst: "waiting"},
-			{Name: "job found",          Src: []string{"polling"},      Dst: "exec-ing"},
-			{Name: "no jobs found",      Src: []string{"polling"},      Dst: "waiting"},
-			{Name: "launched",           Src: []string{"exec-ing"},     Dst: "book-keeping"},
+			{Name: "wake-up", Src: []string{"waiting"}, Dst: "book-keeping"},
+			{Name: "books kept", Src: []string{"book-keeping"}, Dst: "polling"},
+			{Name: "books say sleep", Src: []string{"book-keeping"}, Dst: "waiting"},
+			{Name: "job found", Src: []string{"polling"}, Dst: "exec-ing"},
+			{Name: "no jobs found", Src: []string{"polling"}, Dst: "waiting"},
+			{Name: "launched", Src: []string{"exec-ing"}, Dst: "book-keeping"},
 		},
 		fsm.Callbacks{
-	        	"book-keeping": func(e *fsm.Event) { book_keeping(e, cpu_check,  event_queue) },
+			"book-keeping": func(e *fsm.Event) { book_keeping(e, cpu_check, event_queue) },
 			"polling":      func(e *fsm.Event) { polling(e, spool_dir, event_queue, job_queue) },
 			"waiting":      func(e *fsm.Event) { waiting(e, event_queue) },
 			"exec-ing":     func(e *fsm.Event) { execution(e, archive_dir, error_dir, event_queue, job_queue) },
