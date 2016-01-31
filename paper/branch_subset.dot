@@ -1,0 +1,27 @@
+digraph G {
+subgraph place {
+graph [shape=circle,color=gray];
+node [shape=circle];
+"input";
+"out1";
+"out2";
+}
+
+subgraph transitions {
+node [shape=rect];
+"None";
+"and";
+"xor1";
+"xor2";
+}
+
+"input"->"None";
+"input"->"and";
+"input"->"xor1";
+"input"->"xor2";
+
+"and"->"out1";
+"and"->"out2";
+"xor1"->"out1";
+"xor2"->"out2";
+}

@@ -1,0 +1,19 @@
+digraph G {
+subgraph place {
+graph [shape=circle,color=gray];
+node [shape=circle];
+"video";
+"shaky";
+"not_shaky";
+}
+
+subgraph transitions {
+node [shape=rect];
+"is_shaky";
+}
+
+"video"->"is_shaky";
+
+"is_shaky"->"shaky";
+"is_shaky"->"not_shaky";
+}
