@@ -52,6 +52,7 @@ Gendarmerie Nationale
 
 
 \subsection*{Abstract}
+Parallelization, scaling, distribution, concurrency are hard to do right. Furthermore, we wish to use generic, portable and reusable software components as the atomic structure when building our data processing flowchart. We propose a dead simple yet very powerful solution that mimics the UNIX way of chaining filters with pipes and that leverages the file system abstraction to solve the distribution, fault-tolerance and synchronization issues. We show that this idea can be modeled as a Petri Net, and therefore allow the creation of arbitrary topologies. We provide design and visualization tools and examples. 
 
 \section{Introduction}
 One of the many successes of UNIX is the ability to easily chain tools one after another using pipes~\cite{ritchie1984}, e.g.
@@ -61,43 +62,43 @@ One of the many successes of UNIX is the ability to easily chain tools one after
 Once a useful pipeline is devised, it can easily be shared among coworkers, or with the whole world, by sharing the text of the command line\cite{commandlinefucom,climagic}.
 The flexibility and power of the pipe are well known and make it a landmark of computing history.
 
-We would like to retain this flexibility and power, even when offering the functionality of our one-liner to multiple remote users using heterogenous systems, scaling up and down the back-end according to the demand, and providing some safety garantees.
+We would like to retain this flexibility and power, even when offering the functionality of our one-liner to multiple remote users using heterogeneous systems, scaling up and down the back-end according to the demand, and providing some safety guarantees.
 
 With this new use-case we break multiple assumptions of the classic use case of a UNIX one-liner: The users may not
 \begin{itemize}
-\item be tech-savy enough to use the command line,
+\item be tech-savvy enough to use the command line,
 \item have the correct version of the software installed on their computer,
 \item have powerful enough hardware to run the software on,
-\item use a device that run a useable UNIX OS, etc.
+\item use a device that run a usable UNIX OS, etc.
 \end{itemize}
 
-In order to keep using and combining the generic reusable software components we usually find in one liners, we propose a system based on a deamon that watches one (or more) directory, processes any files dropped into it, and drops the result in another directory.
+In order to keep using and combining the generic reusable software components we usually find in one liners, we propose a system based on a daemon that watches one (or more) directory, processes any files dropped into it, and drops the result in another directory.
 
 This system:
 \begin{itemize}
-\item relies on widespread UNIX tools and system calls, and very little (FIXME, number of sloc) additional code, and therefore
+\item relies on widespread UNIX tools and system calls (\autoref{sec:fsd}), and very little (192 sloc of Go and 179 sloc of Python 3) additional code, and therefore
 \begin{itemize}
-\item is very portable and can be used on virtually any UNIX platform,
-\item benefits from a large number of off-the-shelf software components and the large body of research on distributed and fault-tolerant file systems,
-\item limits the ability of a given executable in the topology to wreak havoc on the system
+\item is very portable and can be used on virtually any UNIX platform (\autoref{sec:code}),
+\item benefits from a large number of off-the-shelf software components (\autoref{sec:tooling}) and the large body of research on distributed and fault-tolerant file systems (\autoref{sec:fs}),
+\item limits the ability of a given executable in the topology to wreak havoc on the system (\autoref{sec:fsd})
 \end{itemize}
-\item can be mathematically modeled as a Petri Net, and therefore
+\item can be mathematically modeled as a Petri Net (\autoref{sec:plumbing}), and therefore
 \begin{itemize}
-\item allows the chaining, branching, merging of generic reusable software components, in an arbitrary topology,
-\item provides insights about transition probabilities, transition time, waiting time, etc.
-\item lets users vizualize the topology in an intuitive way,
-\item lets users monitor the system,
+\item allows the chaining (\autoref{sec:chaining}), branching (\autoref{sec:branching}) and merging (\autoref{sec:merging}) of generic reusable software components, in an arbitrary topology,
+\item provides insights about transition probabilities, transition time, waiting time, etc. (\autoref{sec:tooling})
+\item lets users visualize the topology in an intuitive way (\autoref{sec:plumbing}),
+\item lets users monitor the system (\autoref{sec:tooling}),
 \end{itemize}
-\item can be distributed among multiple computers,
-\item scales up and down according to the load,
-\item handles partial failures gracefully,
-\item handles brutal total shutdown without data loss or data corruption (under certain assumptions).
+\item can be distributed among multiple computers (\autoref{sec:fsd}, \ref{sec:fs}),
+\item scales up and down according to the load (\autoref{sec:fsd}),
+\item handles partial failures gracefully (\autoref{sec:ft}),
+\item handles brutal total shutdown without data loss or data corruption (under certain assumptions) (\autoref{sec:ft}).
 \end{itemize}
 \section{Scaling a pipeline}
 
-There is a huge variety of ways simlpe, generic software components such as {\tt grep}, {\tt sed}, {\tt cut}, {\tt cat} or {\tt paste} can be combined using UNIX pipes to give rise to useful processing pipelines. Tales of days saved by a clever pipeline are routinely exchanged~\cite{ddos,ping} and have entered the UNIX lore.
+There is a huge variety of ways simple, generic software components such as {\tt grep}, {\tt sed}, {\tt cut}, {\tt cat} or {\tt paste} can be combined using UNIX pipes to give rise to useful processing pipelines. Tales of days saved by a clever pipeline are routinely exchanged~\cite{ddos,ping} and have entered the UNIX lore.
 
-Standard tools can be used to process text files in any imagineable way, but pipes are not limited to text files. Binary data (such as audio or video) can also be processed in a pipeline~\cite{ffmpeg,audio}, e.g. :
+Standard tools can be used to process text files in any imaginable way, but pipes are not limited to text files. Binary data (such as audio or video) can also be processed in a pipeline~\cite{ffmpeg,audio}, e.g. :
 
 {\bf \tt decode < in.mp4 | stabilize | watermark | encode --format mp4 > out.mp4 \\}
 
@@ -105,34 +106,34 @@ Despite everyone carrying always-connected devices in their pockets whose proces
 
 In order to \emph{scale} this pipeline, we need to handle:
 \begin{itemize}
-\item Multiple users around the world using heterogenous thin clients
+\item Multiple users around the world using heterogeneous thin clients
 \item Potentially spiky usage
-\item .99something uptime
+\item $>$ .99 uptime
 \end{itemize}
 
 To achieve that, we need to wrap our one-liner in a system that:
 \begin{itemize}
-\item monitors ressource usage and scale up and down horizontally(!) with the load,
+\item monitors resource usage and scale up and down horizontally\endnote{I did not expect to associate up and down with horizontally and still make sense.} with the load,
 \item keeps track of jobs and give the output to the client who provided the input
 \item is redundant and gracefully handles failure
 \end{itemize}
 
 The UNIX shell was not created for this job, and it can not foot the bill without a lot of abuse. For example, when a pipe is broken, the whole pipeline fails. One has to start over as there is no checkpoint in the middle of the computation.
 
-With the use of {\tt tee} and named pipes, more complex workflow can be created, with e.g. branching, but merging is still an issue, and any midly complex topology will quickly lead to not-so-readable glue code.
+With the use of {\tt tee} and named pipes, more complex workflow can be created, with e.g. branching, but merging is still an issue, and any mildly complex topology will quickly lead to not-so-readable glue code.
 
 Utilities like {\tt netcat}, {\tt ssh} and {\tt parallel} can handle some aspects of distribution, but one still have to handle bookkeeping in order to return the data to the appropriate user when a job is done.
 
 We don't want to code a ad-hoc solution that would incorporate code from the components of the pipeline, and optimize the whole chain. We want to keep the components self-contained, and pass data around without having to modify the components. This allows us to keep the flexibility of the UNIX pipeline.
 
-\section{A filesystem and a daemon}
+\section{A file system and a daemon}
 \label{sec:fsd}
 
 There exists a very useful abstraction with many battle-tested implementations that are redundant and scalable, that every programmer understands, that all programming languages can use and that benefits from decades of research : the File System.
 
-In order to scale the pipeline, we propose to replace each pipe with a daemon that watches a directory, launches the processing program, feeding it any file created in the directory, and writes the standard output in another directory. The choice of the filesystem of each directory will depend on the desired trade-off between performance, fault-folerance, security, etc. (fixme ref section)
+In order to scale the pipeline, we propose to replace each pipe with a daemon that watches a directory, launches the processing program, feeding it any file created in the directory, and writes the standard output in another directory. The choice of the file system of each directory will depend on the desired trade-off between performance, fault-tolerance, security, etc. 
 
-We coded an implementation of this daemon in Go (fixme ref availability), called {\tt pmjq}, short for "Poor man's Job Queue". The implementation is quite small (FIXME sloc), and can easily be ported to other languages if need be.
+We coded an implementation of this daemon in Go, called {\tt pmjq}, short for "Poor man's Job Queue". The implementation is quite small, and can easily be ported to other languages if need be. The basic prototype is:
 
     {\bf \tt pmjq <input-dir> <filter> <output-dir> \\}
 
@@ -159,11 +160,11 @@ Horizontal scalability is achieved by having the daemon take the host's load int
 
    {\bf \tt pmjq [--max-load <max-load> <max-cmd>] [--min-load <min-load> <min-cmd>] <input-dir> <filter> <output-dir> \\}
 
-Typically, the command to call when the load exceeds the limit is a command that will launch another daemon on another machine (typically using {\tt ssh}). This second daemon will be configured via the {\tt --min-load} option to kill itself once the load comes back down (fixme write example).
+Typically, the command to call when the load exceeds the limit is a command that will launch another daemon on another machine (typically using {\tt ssh}). This second daemon will be configured via the {\tt --min-load} option to kill itself once the load comes back down.
 
-Synchronisation and mutual exclusion of multiple daemons watching the same directory (for parallel processing) rely on the underlying filesystem's features ; {\tt pmjq} relies on the {\tt flock} system call, but implementing a new scheme in case {\tt flock} is not supported by the target filesystem can be as easy as defining a naming scheme for a lock-file.
+Synchronization and mutual exclusion of multiple daemons watching the same directory (for parallel processing) rely on the underlying file system's features ; {\tt pmjq} relies on the {\tt flock} system call, but implementing a new scheme in case {\tt flock} is not supported by the target file system can be as easy as defining a naming scheme for a lock-file.
 
-Some file systems and operating systems support file system events, which could be used to avoid busy-waiting. We did not implement those yet in {\tt pmjq} as they are quite plateform-specific, and instead rely on delayed busy-waiting which we posit has a negligeable impact on performance, though we should verify that assumption once we begin supporting filesystem events.
+Some file systems and operating systems support file system events, which could be used to avoid busy-waiting. We did not implement those yet in {\tt pmjq} as they are quite platform-specific, and instead rely on delayed busy-waiting which we posit has a negligible impact on performance, though we should verify that assumption once we begin supporting file system events.
 
 Security relies on the standard UNIX user and group permissions. For production environments, we suggest the following rules :
 \begin{itemize}
@@ -175,17 +176,17 @@ Security relies on the standard UNIX user and group permissions. For production 
   \end{itemize}
 \end{itemize}
 
-This severely limits the ability for a daemon to create problems on the system, which is extremely useful if the inputs come from untrusted sources. FIXME créer un wrapper.
+This severely limits the ability for a daemon to create problems on the system, which is extremely useful if the inputs come from untrusted sources. Those rules are enforced by the helper code we wrote to help users create and visualize pipelines.
 
-At-least-once delivery is the default mode, as {\tt pmjq} writes the output file before unlinking the input file. (fixme check that it is true) If the system shuts down between these two operations, the worse penalty when the whole system is brought back up (provided the filters are without side-effects and the filesystem was persistent and stayed consistent) is that from that point on in the pipeline, the jobs will be ran twice on the same input, until the second instance of the data catches up to the first and one daemon overwrites the duplicate file.
+At-least-once delivery is the default mode, as {\tt pmjq} writes the output file before unlinking the input file. If the system shuts down between these two operations, the worse penalty when the whole system is brought back up (provided the filters are without side-effects and the file system was persistent and stayed consistent) is that from that point on in the pipeline, the jobs will be ran twice on the same input, until the second instance of the data catches up to the first and one daemon overwrites the duplicate file.
 
 Implementing at-most-once delivery is as easy as inverting the order, and unlinking the input file before writing the output file.
 
-Branching and merging are done by having the daemon watch mutiple input directories (merging) and launching a program that writes to multiple directories (branching).
+Branching and merging are done by having the daemon watch multiple input directories (merging) and launching a program that writes to multiple directories (branching).
 
 \section{Petri Nets}
 
-Petri Nets are a mathematical model of distributed systems. They provide an intuitive yet formal visual representation of distributed processes. We propose to use Petri Nets not only as a modelling tool, but also as a design tool. That way the user can enjoy both the intuitiveness of a visual representation of their pipeline and a myriad of theoretical results drawn from Petri Net analysis or more generally from Graph Theory, or even from neighbooring models such as Markov Processes\endnote{Mappings exist from certain extensions of Petri Nets to Markov Processes.}.
+Petri Nets are a mathematical model of distributed systems. They provide an intuitive yet formal visual representation of distributed processes. We propose to use Petri Nets not only as a modeling tool, but also as a design tool. That way the user can enjoy both the intuitiveness of a visual representation of their pipeline and a myriad of theoretical results drawn from Petri Net analysis or more generally from Graph Theory, or even from neighboring models such as Markov Processes\endnote{Mappings exist from certain extensions of Petri Nets to Markov Processes.}.
 
 A gentle introduction, with examples of some design patterns can be found in~\cite{petrinetsintro}. Briefly, in Petri Nets, \emph{tokens} move from \emph{place} to \emph{place} through \emph{transitions}. A \emph{transition} has a fixed set of input \emph{places} and output \emph{places}. Edges can be weighted by an integer which represent the number of tokens that will be \emph{consumed} (edges from \emph{places} to \emph{transitions}) or \emph{created} (edges from \emph{transitions} to \emph{places}) when the \emph{transition} \emph{fires}. A \emph{transition} can only fire if its input \emph{place(s)} have the necessary amount of \emph{tokens}.
 
@@ -194,7 +195,9 @@ More than one \emph{transition} can be ready to \emph{fire} at any given time. P
 The fact that we can design and model {\tt pmjq} pipelines with Petri Nets is a killer feature, as it allows the user to define an arbitrary topology with not only branching and merging, but also loops, counters etc. This may seem too expressive, and will certainly ruin anybody's day if abused, but it shows that there is no limitation (except uncomputability) on what kind of process can be implemented using {\tt pmjq}.
 
 \section{Plumbing in an arbitrary topology}
+\label{sec:plumbing}
 \subsection{Chaining}
+\label{sec:chaining}
 We saw in \autoref{sec:fsd} that chaining filters with {\tt pmjq} is straightforward. Our original video processing pipeline is transformed into 4 invocations of {\tt pmjq}, using its intuitive syntax that recalls the left-to-right \emph{input}$\rightarrow$\emph{filter}$\rightarrow$\emph{output} model.
 
 In \autoref{sec:fsd}, we also suggested a way to use UNIX's permissions to prevent a daemon from damaging the system. Setting up the users, directories and launching the daemon can be cumbersome, so we wrote some helper code to set everything up.
@@ -233,8 +236,9 @@ In Petri Nets, transitions are atomic. It is obviously not the case with {\tt pm
 \end{figure}
 
 \subsection{Branching}
+\label{sec:branching}
 
-The {\tt tee} utility gives the shell the ability to duplicate a stream. Named pipes or command susbtitution (for shells that support it) can be used to process data in parallel. The GNU Coreutils manual gives multiple examples, such as computing different hashes of a file while it downloads\endnote{\url{https://www.gnu.org/software/coreutils/manual/html_node/tee-invocation.html}}.
+The {\tt tee} utility gives the shell the ability to duplicate a stream. Named pipes or command substitution (for shells that support it) can be used to process data in parallel. The GNU Coreutils manual gives multiple examples, such as computing different hashes of a file while it downloads\endnote{\url{https://www.gnu.org/software/coreutils/manual/html_node/tee-invocation.html}}.
 
 Branching is supported with {\tt pmjq} as easily as providing a command that writes to more than one file ({\tt tee} itself can be such a command, allowing the re-use of existing shell pipelines with minimal effort). The syntax for branching  is:
    {\bf \tt pmjq [options] --inputs <pattern> <indir>... --cmd <cmd> \\}
@@ -265,9 +269,9 @@ In this case, the invocation of {\tt pmjq} one can see \autoref{fig:branch_av} i
 \label{fig:branch_av}
 \end{figure}
 
-We may want to do what some call a \emph{XOR-branch}, that is to say, we may want a {\tt pmjq} incovation to create a token in either one of two directories, but not in both. Imagine for example that instead of running the {\tt stabilize} filter on all our videos, we only do it on videos that are actually shaky. This make sense, performance-wise. Checking that a video is shaky is quicker than running the stabilization process, so if enough videos are non-shaky, the overhead of checking for shakiness will be compensated by not having to run the stabilization process.
+We may want to do what some call a \emph{XOR-branch}, that is to say, we may want a {\tt pmjq} invocation to create a token in either one of two directories, but not in both. Imagine for example that instead of running the {\tt stabilize} filter on all our videos, we only do it on videos that are actually shaky. This make sense, performance-wise. Checking that a video is shaky is quicker than running the stabilization process, so if enough videos are non-shaky, the overhead of checking for shakiness will be compensated by not having to run the stabilization process.
 
-To implement this, we need a {\tt is\_shaky} command, that will read its first argument, and write it in the directory given as the second argument if it is shaky, and instead write it in the directory given as the third agrument if it is not shaky.
+To implement this, we need a {\tt is\_shaky} command, that will read its first argument, and write it in the directory given as the second argument if it is shaky, and instead write it in the directory given as the third argument if it is not shaky.
 
 The session with our interactive tool will be:
 {\tt \small
@@ -300,9 +304,9 @@ It may be tempting to use multiple {\tt pmjq} invocations competing for the same
 
 When a file (\emph{token}) is created in the directory (\emph{place}) that both invocations (\emph{transitions}) read from, in order to stay deterministic, there must exist a rule to say which invocation (\emph{transition}) gets to consume the token\endnote{Note that if the implementation of that rule is based on an exclusive pattern in the filename (\emph{color}) of the file (\emph{token}), then both invocations are not competing with one another. Still, it may be cleaner to change the topology to avoid the situation.}. The implementation of that rule necessarily rely on some form of communication between the two invocations. Therefore, either we have undeterminism or transitions have side effects.
 
-To discourage users from using this antipattern, one of the assumption of our interactive helper code is that only one invocation is reading from an input directory. Users that choose to use the antipattern can still easily modify the generated shell scipts manually.
+To discourage users from using this antipattern, one of the assumption of our interactive helper code is that only one invocation is reading from an input directory. Users that choose to use the antipattern can still easily modify the generated shell scripts manually.
 
-Instead, we encourage user to copy the mechanism illustrated in the {\tt is\_shaky} branching. More formally, a multiple output invocation (let $n$ be the number of output directories) in the {\tt pmjq} graph becomes in the Petri Net formalism the set of all $2^n$ transitions whose output(s) are a (potentially empty) subset of the $n$ output directories. See \autoref{fig:branch_subset} for an illustration. This ensures that the logic of the branching is encapsulated whithin one process, and thus we avoid all the problems of synchronization between competing processes.
+Instead, we encourage user to copy the mechanism illustrated in the {\tt is\_shaky} branching. More formally, a multiple output invocation (let $n$ be the number of output directories) in the {\tt pmjq} graph becomes in the Petri Net formalism the set of all $2^n$ transitions whose output(s) are a (potentially empty) subset of the $n$ output directories. See \autoref{fig:branch_subset} for an illustration. This ensures that the logic of the branching is encapsulated within one process, and thus we avoid all the problems of synchronization between competing processes.
 
 
 \begin{figure}[t]
@@ -368,7 +372,7 @@ Output dir(s):stabilized
 
 The resulting {\tt pmjq} graph and Petri Net are the same (\autoref{fig:merge_shaky}).
 
-When stitching the whole thing together (\autoref{fig:whole}), we can easily remove unecessary transitions and places (such as {\tt cat} and {\tt not shaky}, see \autoref{fig:merge_shaky}, \ref{fig:branch_shaky}). We also removed the {\tt encode} and {\tt watermark} filters, in order for the graph to take less room, and thus be more legible. Those space constraints don't apply when looking at the graph on screen.
+When stitching the whole thing together (\autoref{fig:whole}), we can easily remove unnecessary transitions and places (such as {\tt cat} and {\tt not shaky}, see \autoref{fig:merge_shaky}, \ref{fig:branch_shaky}). We also removed the {\tt encode} and {\tt watermark} filters, in order for the graph to take less room, and thus be more legible. Those space constraints don't apply when looking at the graph on screen.
 
 Because our interactive tool reads the standard input, one can save the answers to the questions in a text file, that can be then modified with a text editor, put under version control, merged, diffed, patched etc. Comments can be included, and then removed with {\tt grep}.
 
@@ -384,7 +388,8 @@ Because our interactive tool reads the standard input, one can save the answers 
 % \subsection{Weighted arcs}
 
 \section{Tooling}
-Because {\tt pmjq} relies on the filesystem and on users and groups, the standard UNIX tooling can easily manage the creation, installation, running and cleaning of advanced pipelines.
+\label{sec:tooling}
+Because {\tt pmjq} relies on the file system and on users and groups, the standard UNIX tooling can easily manage the creation, installation, running and cleaning of advanced pipelines.
 
 Files (\emph{tokens}) in a directory (\emph{place}) can be counted with {\tt ls <dir> | wc -l}.
 
@@ -404,19 +409,21 @@ The processes writing or reading from a directory can be listed with {\tt lsof},
 Multiple simulation tools exists that can be leveraged to simulate, and find the statistical properties of a given Petri Net, without having to actually run the associated, potentially resource-intensive {\tt pmjq} pipeline. Log analysis can provide data about the transition probabilities, the mean waiting time, etc. In our example pipeline, one could determine if the {\tt is\_shaky} branching is worth the trouble by searching for the probability of a token to take one branch or the other, and by measuring the delay induced by the {\tt is\_shaky} transition.
 
 \section{Fault-Tolerance}
+\label{sec:ft}
 
-If the underlying filesystem is persistent, and provided transitions are idempotent and an integrity mechansim is in place\endnote{Such as appending the hash of the data to the filenames.}, all active processes can be brutally killed, and then {\tt launch.sh} can be run again to restart the processes, without any adverse effect. One can even change the topology before launching again.
+If the underlying file system is persistent, and provided transitions are idempotent and an integrity mechanism is in place\endnote{Such as appending the hash of the data to the filenames.}, all active processes can be brutally killed, and then {\tt launch.sh} can be run again to restart the processes, without any adverse effect. One can even change the topology before launching again.
 
-Loud failure of one command will not crash the pipeline, but will simply cause files to accumulate in its input directory(ies). The rest of the pipeline will keep on running while the admins troubleshoot the problem. In our example (\autoref{fig:whole}), a bug in the {\tt equalizer} program would probably be only a minor inconvenience. Because video processing is so resource intensive, the computer(s) will stay busy running {\tt is\_shaky} and {\tt stabilize} while the progammers remove the bug in {\tt equalizer}. When it is launched back up, the files that have accumulated in {\tt audio} will be processed.
+Loud failure of one command will not crash the pipeline, but will simply cause files to accumulate in its input directory(ies). The rest of the pipeline will keep on running while the admins troubleshoot the problem. In our example (\autoref{fig:whole}), a bug in the {\tt equalizer} program would probably be only a minor inconvenience. Because video processing is so resource intensive, the computer(s) will stay busy running {\tt is\_shaky} and {\tt stabilize} while the programmers remove the bug in {\tt equalizer}. When it is launched back up, the files that have accumulated in {\tt audio} will be processed.
 
 Silent failure and data corruption can not be mitigated by {\tt pmjq} alone, of course. Therefore it is important to fail loudly and as soon as possible.
 
-\section{FileSystem choice matters}
-Compromises can be made between security, fault-tolerance and speed. RAM filesystems are great for speed, but a computer crash will cause data loss. Encrypted disks are very secure, but performance may become an issue, etc.
+\section{File System choice matters}
+\label{sec:fs}
+Compromises can be made between security, fault-tolerance and speed. RAM file systems are great for speed, but a computer crash will cause data loss. Encrypted disks are very secure, but performance may become an issue, etc.
 
 The performance of {\tt pmjq} will be strongly tied to the performance of the underlying file system.
 
-There has been decades of research on File Systems, and once performance becomes an issue one has to carefully weigh a lot of criteria (safety, security, performance, cost, maintanability, etc.). Here is an incomplete list of File Systems, OS or tools that can be useful in conjunction with {\tt pmjq} :
+There has been decades of research on File Systems, and once performance becomes an issue one has to carefully weigh a lot of criteria (safety, security, performance, cost, maintainability, etc.). Here is an incomplete list of File Systems, OS or tools that can be useful in conjunction with {\tt pmjq} :
 \begin{itemize}
 \item Distributed File Systems
   \begin{itemize}
@@ -443,14 +450,14 @@ Easy and flexible parallel computing can be done with GNU Parallel (\url{https:/
 
 Upgrading to full-grade concurrency necessitate the use of frameworks like 0MQ (whose manual \url{http://zguide.zeromq.org/page:all} is a great introduction to concurrency in general), RabbitMQ (\url{https://www.rabbitmq.com/}), Kafka (\url{https://kafka.apache.org/}), etc. All these systems are great and big projects are running thanks to them. They provide lots of features, and are well documented and battle-tested.
 
-The most elegant alternative to {\tt pmjq} is Plan 9's plumber~\cite{plumber}, which, used whithin a Plan 9 cluster, will provide seamless concurency, strong authentication (with {\tt factotum}), and handle distribution without having to think about it. Showing that some carfully-constructed plumbing rules map to Petri Nets should not be too hard.
+The most elegant alternative to {\tt pmjq} is Plan 9's plumber~\cite{plumber}, which, used within a Plan 9 cluster, will provide seamless concurrency, strong authentication (with {\tt factotum}), and handle distribution without having to think about it. Showing that some carefully-constructed plumbing rules map to Petri Nets should not be too hard.
 
 \section{Conclusion and further work}
-We provide a proof-of-concept real-life implementation of a mathematically sound model of concurency (the Petri Nets) by having a daemon watch directories for files to process and write the output(s) in other directories. The implementation is very simple yet extremely powerful. Accompanying tools let the user intuitively design, visualize and manage complex systems.
+We provide a proof-of-concept real-life implementation of a mathematically sound model of concurrency (the Petri Nets) by having a daemon watch directories for files to process and write the output(s) in other directories. The implementation is very simple yet extremely powerful. Accompanying tools let the user intuitively design, visualize and manage complex systems.
 
 The reliance on file systems and standard UNIX tools leverage the huge number of off-the-shelf sysadmin tools and the decades of research in distributed, fault-tolerant, secure file systems.
 
-{\tt pmjq} is already used as a prototyping tool, and has yet to reach a point where the performance issues of the underlying filesystem negatively impact its usefulness. More formal tests are going to be run.
+{\tt pmjq} is already used as a prototyping tool, and has yet to reach a point where the performance issues of the underlying file system negatively impact its usefulness. More formal tests are going to be run.
 
 It is also a great tool for ungodly hacks, such as self-modifying topologies (which of course break the Petri Net model).
 
@@ -462,14 +469,14 @@ The author would like to thank his family for the support, his current employer 
 
 
 \section{Availability}
-
+\label{sec:code}
 {\tt pmjq} and the accompanying tool's source code is available at:
 
 \begin{center}
 {\tt https://github.com/edouardklein/pmjq }\\
 \end{center}
 
-Except where explicitely specified in the paper, all the mentioned features are implemented and tested. There will be a small delay between the deadline for the submission and the uploading of the version of {\tt pmjq} that we used to write this paper.
+Except where explicitly specified in the paper, all the mentioned features are implemented and tested. There will be a small delay between the deadline for the submission and the uploading of the version of {\tt pmjq} that we used to write this paper.
 
 {\footnotesize \bibliographystyle{acm}
 \bibliography{main}}
