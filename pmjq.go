@@ -55,6 +55,10 @@ func execution(e *fsm.Event, archive_dir string, error_dir string, events chan<-
 }
 
 func book_keeping(e *fsm.Event, cpu_check float32, c chan<- string) {
+	// Mise à jour du load average
+	// Lancement d'une nouvelle instance
+	// Checking on existing processes
+	// Polling or waiting
 	log.Println("DEBUG: action=book_keeping")
 	if cpu_check != -1 {
 		if Load_average > cpu_check { //Not launching a new job now
@@ -178,18 +182,18 @@ Options:
 	state := fsm.NewFSM(
 		"waiting",
 		fsm.Events{
-			{Name: "wake-up", Src: []string{"waiting"}, Dst: "book-keeping"},
-			{Name: "books kept", Src: []string{"book-keeping"}, Dst: "polling"},
-			{Name: "books say sleep", Src: []string{"book-keeping"}, Dst: "waiting"},
-			{Name: "job found", Src: []string{"polling"}, Dst: "exec-ing"},
-			{Name: "no jobs found", Src: []string{"polling"}, Dst: "waiting"},
-			{Name: "launched", Src: []string{"exec-ing"}, Dst: "book-keeping"},
+			{Src: []string{"waiting"}, Dst: "book-keeping", Name: "wake-up"},
+			{Src: []string{"book-keeping"}, Dst: "polling", Name: "books kept"},
+			{Src: []string{"book-keeping"}, Dst: "waiting", Name: "books say sleep"},
+			{Src: []string{"polling"}, Dst: "execing", Name: "job found"},
+			{Src: []string{"polling"}, Dst: "waiting", Name: "no jobs found"},
+			{Src: []string{"execing"}, Dst: "book-keeping", Name: "launched"},
 		},
 		fsm.Callbacks{
 			"book-keeping": func(e *fsm.Event) { book_keeping(e, cpu_check, event_queue) },
 			"polling":      func(e *fsm.Event) { polling(e, spool_dir, event_queue, job_queue) },
 			"waiting":      func(e *fsm.Event) { waiting(e, event_queue) },
-			"exec-ing":     func(e *fsm.Event) { execution(e, archive_dir, error_dir, event_queue, job_queue) },
+			"execing":      func(e *fsm.Event) { execing(e, archive_dir, error_dir, event_queue, job_queue) },
 		},
 	)
 	//Event loop
