@@ -10,3 +10,7 @@ Welcome to PMJQ Tools's documentation!
    :members:
 
 
+.. automodule:: pmjqtools.tools
+   :members:
+
+

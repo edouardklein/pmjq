@@ -27,3 +27,6 @@ merge_shaky.pdf: merge_shaky_setup.sh
 whole_pipeline.pdf: whole_pipeline.txt
 	grep -v -E '^#' < whole_pipeline.txt | ../pmjq_interactive  && ../pmjq_viz < setup.sh | dot -T pdf > whole_pipeline.pdf
 
+clean:
+	rm -f *.pdf main.aux main.bbl main.blg main.ent main.fdb_latexmk main.fls main.log \
+main.out cleanup.sh launch.sh setup.sh

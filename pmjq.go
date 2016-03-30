@@ -1,3 +1,18 @@
+/*
+PMJQ is a tool to tool
+
+Heading1
+
+pargraphparagtrapg
+
+paragaph ?
+
+Paragraph.
+
+Heading2
+
+paragraph
+*/
 package main
 
 // #include <sys/file.h>
@@ -17,7 +32,7 @@ import (
 	"time"
 )
 
-func execution(e *fsm.Event, archive_dir string, error_dir string, events chan<- string, jobs <-chan *os.File) {
+func execing(e *fsm.Event, archive_dir string, error_dir string, events chan<- string, jobs <-chan *os.File) {
 	file := <-jobs
 	cmd := exec.Command("./" + file.Name())
 	err := cmd.Start()
@@ -127,6 +142,7 @@ func load_average() float32 {
 /*GLOBAL VARIABLE*/
 var Load_average = float32(-1) //Load average of the system over the last minute , updated by a goroutine, read by the book-keeper if -C option is passed
 
+// PMJQ is a bla bla
 func main() {
 	/*The main loop is a Finite State Machine.
 	FIXME: draw the machine
