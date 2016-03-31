@@ -33,13 +33,12 @@ machines, to distribute the computation among the nodes of a cluster.
 
 Invocations can be chained (see the paper).
 
-Where to put that ?
+Installation
 =====================
 
 The paper can be build by issuing ``make paper`` in the root directory of the
 project. The paper's figures are not fixed, they are built with the tooling
-provided by
-this package.
+provided by this package. Therefore one has to run ``make install`` beforehand
 
 '''
 from .tools import *
