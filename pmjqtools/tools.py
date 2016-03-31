@@ -93,6 +93,7 @@ as one can be sure that what we see is what is going to be executed.
 '''
 import sys
 import re
+import hashlib
 from collections import namedtuple
 from .templates import SETUP_TEMPLATE, MKDIR_TEMPLATE, PMJQ_FILTER_TEMPLATE,\
     PMJQ_BRANCH_MERGE_TEMPLATE, CLEANUP_TEMPLATE, DOT_TEMPLATE
@@ -106,9 +107,11 @@ def invocation_name(invocations, inv):
     short_name = inv.command.split(' ')[0]
     if sum([i.command.startswith(short_name) for i in invocations]) < 2:
         return short_name
-    return short_name+'_'+str(abs(hash(' '.join(inv.inputs) +
-                                       inv.command +
-                                       ' '.join(inv.outputs))))[:3]
+    return short_name+'_' + \
+        hashlib.md5((' '.join(sorted(inv.inputs)) +
+                    inv.command +
+                     ' '.join(sorted(inv.outputs)))
+                    .encode('utf-8')).hexdigest()[:3]
 
 
 def read_user_input():
@@ -303,20 +306,29 @@ def extract_place_trans_edges(lines):
 def extract_trans_place_edges(lines):
     '''Translate useradd and chown calls to 'transition -> place' edges'''
     def match(line):
-        return re.match('^useradd .* -G (.*) pu_(.*)$', line)
+        return re.match('^useradd -M -N -g (.*) -G (.*) pu_(.*)$', line)
 
-    user2groups = {match(l).group(2):
-                   list(map(lambda x: x[3:], match(l).group(1).split(',')))
+    # Map a user to the groups it belongs to
+    user2groups = {match(l).group(3): [match(l).group(1)[3:]] +
+                   list(map(lambda x: x[3:], match(l).group(2).split(',')))
                    for l in lines if match(l)}
+    # Invert the map: map a group to the users that belong to it
+    group2users = {g: [u for u in user2groups if g in user2groups[u]] for
+                   l in user2groups.values() for g in l}
 
     def match(line):
-        return re.match('^chown .*:pg_(\S*) (.*)$', line)
+        return re.match('^chown (.*):pg_(\S*) (.*)$', line)
 
-    group2dir = {match(l).group(1): match(l).group(2)
+    # Map a directory to the users that belong in its group, but are not
+    # the owner nor `whoami`
+    dir2users = {match(l).group(3):
+                 [u for u in group2users[match(l).group(2)]
+                  if u != match(l).group(1)[3:] and u != '`whoami`']
                  for l in lines if match(l)}
-    return ['"'+user+'"->"'+group2dir[group]+'";'
-            for user in sorted(user2groups)
-            for group in sorted(user2groups[user])]
+
+    return ['"'+user+'"->"'+dir+'";'
+            for dir in sorted(dir2users) if len(dir2users[dir]) > 0
+            for user in sorted(dir2users[dir])]
 
 
 def pmjq_viz():

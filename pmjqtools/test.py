@@ -7,7 +7,7 @@ import shutil
 pmjq_interactive_cmd = 'coverage run --append '+shutil.which('pmjq_interactive')
 pmjq_viz_cmd = 'coverage run --append '+shutil.which('pmjq_viz')
 
-#Testing a simple chained pipeline
+print('Testing a simple chained pipeline')
 pmjq = pexpect.spawn(pmjq_interactive_cmd,
                      timeout=10, logfile=open('/dev/stdout', 'wb'))
 pmjq.expect_exact('Command:')
@@ -40,7 +40,6 @@ pmjq.sendline('output')
 
 pmjq.expect_exact('Command:')
 pmjq.sendline('')
-#pmjq.expect_exact('Wrote setup.sh launch.sh and cleanup.sh')
 
 expected_setup_sh = '''#!/usr/bin/env sh
 groupadd pg_decode
@@ -111,6 +110,7 @@ rm -r watermarked
 
 assert(open('cleanup.sh').read() == expected_cleanup_sh)
 
+print('Testing the visualization tool...')
 # Dot<->Petri net template from http://thegarywilson.com/blog/2011/drawing-petri-nets/
 expected_viz = '''digraph G {
 subgraph place {
@@ -143,10 +143,10 @@ node [shape=rect];
 }
 '''
 
+time.sleep(1)
 assert(subprocess.check_output(pmjq_viz_cmd + ' < setup.sh', shell=True).decode('utf8') ==
        expected_viz)
 
-time.sleep(1)
 print('Testing branching...')
 
 # Testing branching
@@ -230,7 +230,35 @@ time.sleep(1)
 
 assert(open('setup.sh', 'r').read() == expected_setup_sh)
 
-# Testing xor-merging
+
+print('Testing the visualization tool again...')
+# Dot<->Petri net template from http://thegarywilson.com/blog/2011/drawing-petri-nets/
+expected_viz = '''digraph G {
+subgraph place {
+graph [shape=circle,color=gray];
+node [shape=circle];
+"audio";
+"output";
+"video";
+}
+
+subgraph transitions {
+node [shape=rect];
+"ffmpeg";
+}
+
+"audio"->"ffmpeg";
+"video"->"ffmpeg";
+
+"ffmpeg"->"output";
+}
+'''
+
+time.sleep(1)
+assert(subprocess.check_output(pmjq_viz_cmd + ' < setup.sh', shell=True).decode('utf8') ==
+       expected_viz)
+
+print('Testing xor-merging')
 pmjq = pexpect.spawn(pmjq_interactive_cmd, timeout=10, logfile=open('/dev/stdout', 'wb'))
 pmjq.expect_exact('Command:')
 pmjq.sendline('cat')
