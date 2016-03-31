@@ -200,16 +200,17 @@ pmjq.expect_exact('Command:')
 pmjq.sendline('')
 
 expected_setup_sh = '''#!/usr/bin/env sh
-groupadd pg_ffmpeg
+groupadd pg_ffmpeg_0
+groupadd pg_ffmpeg_1
 groupadd pg_output
 
-usermod -a -G pg_ffmpeg,pg_output `whoami`
+usermod -a -G pg_ffmpeg_0,pg_ffmpeg_1,pg_output `whoami`
 
-useradd -M -N -g pg_ffmpeg -G pg_output pu_ffmpeg
+useradd -M -N -g pg_ffmpeg_0 -G pg_ffmpeg_1,pg_output pu_ffmpeg
 
 mkdir audio
 chmod 510 audio
-chown pu_ffmpeg:pg_ffmpeg audio
+chown pu_ffmpeg:pg_ffmpeg_0 audio
 
 mkdir output
 chmod 510 output
@@ -217,7 +218,7 @@ chown `whoami`:pg_output output
 
 mkdir video
 chmod 510 video
-chown pu_ffmpeg:pg_ffmpeg video
+chown pu_ffmpeg:pg_ffmpeg_1 video
 
 '''
 

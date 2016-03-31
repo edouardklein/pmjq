@@ -206,13 +206,13 @@ def useradd(invocations):
 def mkdir(invocations):
     '''Return the mkdir part of the setup script'''
     d2g = dir2group(invocations)
-    u2g = user2groups(invocations)
 
     def user(d):
-        answer = d2g[d].replace('pg_', 'pu_')
-        if answer not in u2g:  # d is an output dir
-            answer = '`whoami`'
-        return answer
+        try:
+            invocation = [i for i in invocations if d in i.inputs][0]
+        except IndexError:  # d is an output dir
+            return '`whoami`'
+        return 'pu_' + invocation_name(invocations, invocation)
     return '\n'.join(MKDIR_TEMPLATE.format(directory=d,
                                            group=d2g[d],
                                            user=user(d))
