@@ -139,11 +139,11 @@ node [shape=rect];
 }
 '''
 
-assert(subprocess.check_output('./pmjq_viz < setup.sh', shell=True).decode('utf8') ==
+assert(subprocess.check_output('pmjq_viz < setup.sh', shell=True).decode('utf8') ==
        expected_viz)
 
 time.sleep(1)
-print('Testing brnaching...')
+print('Testing branching...')
 
 # Testing branching
 pmjq = pexpect.spawn('./pmjq_interactive', timeout=10, logfile=open('/dev/stdout', 'wb'))
