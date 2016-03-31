@@ -14,7 +14,8 @@ onther), to compose an arbitrarily complex processing network.
 By distributing the underlying file system, one can distribute the computation
 across several nodes.
 
-The reference document for PMJQ is the paper. It
+The reference document for PMJQ is the `paper
+<https://github.com/edouardklein/pmjq/raw/master/paper/main.pdf>`_. It
 gives an overview of PMJQ and its tooling, and demonstrate that PMJQ maps to a
 powerful mathematical model of distributed computing: the Petri Nets.
 
@@ -31,7 +32,10 @@ write its output in some others.
 Note that there can exist multiple `instances` of this invocation, on multile
 machines, to distribute the computation among the nodes of a cluster.
 
-Invocations can be chained (see the paper).
+Invocations can be chained (see the paper for the details) in order to create
+complete data processing workflows, such as this one for video processing:
+
+.. image:: ../paper/whole_pipeline.png
 
 Installation
 =====================
