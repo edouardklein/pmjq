@@ -79,7 +79,7 @@ Such a file may be used on the command line with::
 '''
 from collections import namedtuple
 from .templates import SETUP_TEMPLATE, MKDIR_TEMPLATE, PMJQ_FILTER_TEMPLATE,\
-    PMJQ_BRANCH_MERGE_TEMPLATE
+    PMJQ_BRANCH_MERGE_TEMPLATE, CLEANUP_TEMPLATE
 
 Invocation = namedtuple('Invocation', 'inputs,command,outputs,pattern')
 Invocation.__doc__ = 'This data structure represents one invocation of pmjq'
@@ -235,6 +235,19 @@ def launch(invocations):
                                                key=lambda i: i.command))+'\n'
 
 
+def cleanup(invocations):
+    '''Return the text of the cleanup script'''
+    groupdel = '\n'.join('groupdel '+group
+                         for group in sorted(dir2group(invocations).values()))
+    userdel = '\n'.join('userdel '+user
+                        for user in sorted(user2groups(invocations).keys()))
+    rm = '\n'.join('rm -r '+d
+                   for d in sorted(dir2group(invocations).keys()))
+    return CLEANUP_TEMPLATE.format(groupdel=groupdel,
+                                   userdel=userdel,
+                                   rm=rm)
+
+
 def pmjq_interactive():
     '''Entry point of the pmjq_interactive executable'''
     invocations = read_user_input()
@@ -242,3 +255,5 @@ def pmjq_interactive():
         f.write(setup(invocations))
     with open('launch.sh', 'w') as f:
         f.write(launch(invocations))
+    with open('cleanup.sh', 'w') as f:
+        f.write(cleanup(invocations))
