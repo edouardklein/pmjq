@@ -1,0 +1,392 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>PMJQ &mdash; PMJQ Tools 0.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="top" title="PMJQ Tools 0.0.0 documentation" href="#" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body role="document">  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-pmjqtools">
+<span id="pmjq"></span><h1>PMJQ<a class="headerlink" href="#module-pmjqtools" title="Permalink to this headline">¶</a></h1>
+<p>The pmjqtools module provides supporting tools for the PMJQ distributed
+computing framework.</p>
+<div class="section" id="basic-principle">
+<h2>Basic principle<a class="headerlink" href="#basic-principle" title="Permalink to this headline">¶</a></h2>
+<p>PMJQ is a daemon that monitors one or several input directories. It launches a
+process everytime there is data to process in the input directories. The
+process writes its output in one or more output directories.</p>
+<p>Multiple instances can be chained (one reading from an output directory of an
+onther), to compose an arbitrarily complex processing network.</p>
+<p>By distributing the underlying file system, one can distribute the computation
+across several nodes.</p>
+<p>The reference document for PMJQ is the <a class="reference external" href="https://github.com/edouardklein/pmjq/raw/master/paper/main.pdf">paper</a>. It
+gives an overview of PMJQ and its tooling, and demonstrate that PMJQ maps to a
+powerful mathematical model of distributed computing: the Petri Nets.</p>
+</div>
+<div class="section" id="pmjq-concepts">
+<h2>PMJQ concepts<a class="headerlink" href="#pmjq-concepts" title="Permalink to this headline">¶</a></h2>
+<p>PMJQ can be used to build complex processing pipelines, with branching and
+merging.</p>
+<p>A <cite>pipeline</cite> is composed of multiple <cite>invocations</cite>. An invocation is a line in
+a script that calls pmjq, which will read its input from some directories and
+write its output in some others.</p>
+<p>Note that there can exist multiple <cite>instances</cite> of this invocation, on multile
+machines, to distribute the computation among the nodes of a cluster.</p>
+<p>Invocations can be chained (see the paper).</p>
+</div>
+<div class="section" id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h2>
+<p>The paper can be build by issuing <code class="docutils literal"><span class="pre">make</span> <span class="pre">paper</span></code> in the root directory of the
+project. The paper&#8217;s figures are not fixed, they are built with the tooling
+provided by this package. Therefore one has to run <code class="docutils literal"><span class="pre">make</span> <span class="pre">install</span></code> beforehand</p>
+</div>
+<span class="target" id="module-pmjqtools.tools"></span><div class="section" id="the-pmjq-unix-security-model">
+<h2>The PMJQ Unix security model<a class="headerlink" href="#the-pmjq-unix-security-model" title="Permalink to this headline">¶</a></h2>
+<p>PMJQ relies on standard Unix tooling and permissions to make sure a rogue,
+compromised of buggy program can do only limited damage.</p>
+<p>A folder should only be read by one invocation at a time (but can be read by
+multiple instances of the same invocation).</p>
+<p>It is technically possible to have a folder be read by multiple invocation, but
+it is not advisable as the behavior is undefined : which invocation will
+process a file in the folder is anyone&#8217;s guess. It also breaks the PMJQ unix
+security model.</p>
+<p>The PMJQ UNIX security model is as follow:</p>
+<ul class="simple">
+<li>Each directory is owned by a specific group</li>
+<li>Each invocation (and thus the processes it launches) is run by a specificuser.</li>
+<li>This user owns all the input directories.</li>
+<li>This user belongs to the groups of the input and output directories of itsinvocation.</li>
+</ul>
+<p>That way, if a process launched by an invocation of <code class="docutils literal"><span class="pre">pmjq</span></code> goes awry, it
+will at most do damage only in its input and output folders, and nowhere else.</p>
+<p>This security model is enforced by using the scripts generated by
+<code class="docutils literal"><span class="pre">pmjq_interactive</span></code>.</p>
+</div>
+<div class="section" id="tools">
+<h2>Tools<a class="headerlink" href="#tools" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="pmjq-interactive-usage">
+<h3><code class="docutils literal"><span class="pre">pmjq_interactive</span></code> usage<a class="headerlink" href="#pmjq-interactive-usage" title="Permalink to this headline">¶</a></h3>
+<dl class="docutils">
+<dt>The <code class="docutils literal"><span class="pre">pmjq_interactive</span></code> tool generates three shell scripts.</dt>
+<dd><ul class="first last simple">
+<li>The first one (<code class="docutils literal"><span class="pre">setup.sh</span></code>) creates the directories, users and groups andsets the permissions.</li>
+<li>The second one (<code class="docutils literal"><span class="pre">launch.sh</span></code>) launches the daemons.</li>
+<li>The last one (<code class="docutils literal"><span class="pre">cleanup.sh</span></code>) removes the directories, users and groups.</li>
+</ul>
+</dd>
+<dt>The user is asked, in order:</dt>
+<dd><ul class="first last simple">
+<li>which command <code class="docutils literal"><span class="pre">pmjq</span></code> is supposed to launch,</li>
+<li>which are the input directories,</li>
+<li>which are the output directories.</li>
+</ul>
+</dd>
+</dl>
+<p>This tuple <code class="docutils literal"><span class="pre">(input,</span> <span class="pre">cmd,</span> <span class="pre">output)</span></code> is called an <cite>invocation</cite>, because it will,
+in <code class="docutils literal"><span class="pre">launch.sh</span></code>, map to one invocation of <code class="docutils literal"><span class="pre">pmjq</span></code>.</p>
+<p>A transcript of a user setting up the first two invocations of our example
+pipeline using this tool would begin like this:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">Command</span><span class="p">:</span><span class="n">decode</span>
+<span class="n">Input</span> <span class="nb">dir</span><span class="p">(</span><span class="n">s</span><span class="p">):</span><span class="nb">input</span><span class="o">/</span>
+<span class="n">Output</span> <span class="nb">dir</span><span class="p">(</span><span class="n">s</span><span class="p">):</span><span class="n">decoded</span><span class="o">/</span>
+<span class="n">Command</span><span class="p">:</span><span class="n">stabilize</span>
+<span class="n">Input</span> <span class="nb">dir</span><span class="p">(</span><span class="n">s</span><span class="p">):</span><span class="n">decoded</span><span class="o">/</span>
+<span class="n">Output</span> <span class="nb">dir</span><span class="p">(</span><span class="n">s</span><span class="p">):</span><span class="n">stabilized</span><span class="o">/</span>
+</pre></div>
+</div>
+<p>The generated scripts may have to be tweaked afterwards to add
+mounting/unmounting of remote, RAM or virtual file systems, or to add options
+(e.g. <code class="docutils literal"><span class="pre">--max-load</span></code>) to the invocations of <code class="docutils literal"><span class="pre">pmjq</span></code>. They lend themselves
+quite well to merging, diffing and version control.</p>
+<p>The <code class="docutils literal"><span class="pre">pmjq_interactive</span></code> tool can also be used non interactively, by storing
+in a file the answers one would give to the tool&#8217;s questions. Comments can be
+added by starting a line with a #, such as:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span># Branching audio/video
+ffmpeg -i $1 -map 0:v -vcodec copy video/`basename $1`.ogv -map 0:a -acodec copy audio/`basename $1`.ogg
+input
+audio video
+# Audio branch
+equalizer
+audio
+equalized
+# Video branch
+# Branching shaky xor not
+is_shaky $1 shaky stabilized
+video
+shaky stabilized
+# Video branch/shaky branch
+stabilize
+shaky
+stabilized
+# (Shaky xor not) merged in stabilized
+# Merge audio and video branches in output
+ffmpeg -i $1 -i $2 -c copy output/`basename $1`.ogg
+equalized stabilized
+(.*).og[gv]$
+output
+
+</pre></div>
+</div>
+<p>Such a file may be used on the command line with:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">grep</span> <span class="o">-</span><span class="n">v</span> <span class="o">-</span><span class="n">E</span> <span class="s1">&#39;^#&#39;</span> <span class="o">&lt;</span> <span class="n">whole_pipeline</span><span class="o">.</span><span class="n">txt</span> <span class="o">|</span> <span class="n">pmjq_interactive</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="pmjq-viz-usage">
+<h3><code class="docutils literal"><span class="pre">pmjq_viz</span></code> usage<a class="headerlink" href="#pmjq-viz-usage" title="Permalink to this headline">¶</a></h3>
+<p>The <code class="docutils literal"><span class="pre">pmjq_viz</span></code> tool lets you visualize the pipeline.</p>
+<p>It analyzes the <code class="docutils literal"><span class="pre">setup.sh</span></code> script generated by the <code class="docutils literal"><span class="pre">pmjq_interactive</span></code> tool
+and outputs the resulting graph in dot language. To see it in e.g. pdf, one
+can run:</p>
+<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">pmjq_viz</span> <span class="o">&lt;</span> <span class="n">setup</span><span class="o">.</span><span class="n">sh</span> <span class="o">|</span> <span class="n">dot</span> <span class="o">-</span><span class="n">T</span> <span class="n">pdf</span> <span class="o">&gt;</span> <span class="n">whole_pipeline</span><span class="o">.</span><span class="n">pdf</span>
+</pre></div>
+</div>
+<p>The fact that the vizualisation tool works from the <code class="docutils literal"><span class="pre">setup.sh</span></code> script instead
+of using the user input given to <code class="docutils literal"><span class="pre">pmjq_interactive</span></code> is an important feature
+as one can be sure that what we see is what is going to be executed.</p>
+<dl class="class">
+<dt id="pmjqtools.tools.Invocation">
+<em class="property">class </em><code class="descclassname">pmjqtools.tools.</code><code class="descname">Invocation</code><a class="headerlink" href="#pmjqtools.tools.Invocation" title="Permalink to this definition">¶</a></dt>
+<dd><p>This data structure represents one invocation of pmjq</p>
+<dl class="attribute">
+<dt id="pmjqtools.tools.Invocation.command">
+<code class="descname">command</code><a class="headerlink" href="#pmjqtools.tools.Invocation.command" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="pmjqtools.tools.Invocation.inputs">
+<code class="descname">inputs</code><a class="headerlink" href="#pmjqtools.tools.Invocation.inputs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="pmjqtools.tools.Invocation.outputs">
+<code class="descname">outputs</code><a class="headerlink" href="#pmjqtools.tools.Invocation.outputs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="pmjqtools.tools.Invocation.pattern">
+<code class="descname">pattern</code><a class="headerlink" href="#pmjqtools.tools.Invocation.pattern" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.cleanup">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">cleanup</code><span class="sig-paren">(</span><em>invocations</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#cleanup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.cleanup" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the text of the cleanup script</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.dir2group">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">dir2group</code><span class="sig-paren">(</span><em>invocations</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#dir2group"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.dir2group" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the groups and directories that ought to be created</p>
+<p>First, there is one group per input directory.</p>
+<p>Then, there is one group per global output directory.</p>
+<p>A global output directory is a directory no pmjq invocation reads from,
+and in which, consequently, data will accumulate (presumably to be used
+by a human).</p>
+<p>The returned values is a dictionary that maps directory names to the group
+that own them.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.extract_place_trans_edges">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">extract_place_trans_edges</code><span class="sig-paren">(</span><em>lines</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#extract_place_trans_edges"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.extract_place_trans_edges" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translate chown calls to &#8216;place -&gt; transition&#8217; edges</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.extract_places">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">extract_places</code><span class="sig-paren">(</span><em>lines</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#extract_places"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.extract_places" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translate mkdir calls to place nodes</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.extract_trans_place_edges">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">extract_trans_place_edges</code><span class="sig-paren">(</span><em>lines</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#extract_trans_place_edges"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.extract_trans_place_edges" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translate useradd and chown calls to &#8216;transition -&gt; place&#8217; edges</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.extract_transitions">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">extract_transitions</code><span class="sig-paren">(</span><em>lines</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#extract_transitions"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.extract_transitions" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translate useradd calls to transition nodes</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.groupadd">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">groupadd</code><span class="sig-paren">(</span><em>invocations</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#groupadd"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.groupadd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the groupadd part of the setup script</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.invocation_name">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">invocation_name</code><span class="sig-paren">(</span><em>invocations</em>, <em>inv</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#invocation_name"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.invocation_name" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a short unique name for the given invocation</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.launch">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">launch</code><span class="sig-paren">(</span><em>invocations</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#launch"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.launch" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the text of the launch script</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.mkdir">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">mkdir</code><span class="sig-paren">(</span><em>invocations</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#mkdir"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.mkdir" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the mkdir part of the setup script</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.pmjq_interactive">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">pmjq_interactive</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#pmjq_interactive"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.pmjq_interactive" title="Permalink to this definition">¶</a></dt>
+<dd><p>Entry point of the pmjq_interactive executable</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.pmjq_viz">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">pmjq_viz</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#pmjq_viz"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.pmjq_viz" title="Permalink to this definition">¶</a></dt>
+<dd><p>Entry point of the pmjq_viz executable</p>
+<p>Scan the script on the standard input to translate it to its Petri Net
+couterpart.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.read_user_input">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">read_user_input</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#read_user_input"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.read_user_input" title="Permalink to this definition">¶</a></dt>
+<dd><p>Prompt the user, create invocations and return them</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.setup">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">setup</code><span class="sig-paren">(</span><em>invocations</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#setup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.setup" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the text of the setup script</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.user2groups">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">user2groups</code><span class="sig-paren">(</span><em>invocations</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#user2groups"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.user2groups" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the users that ought to be created</p>
+<p>There is one user per pmjq invocation.</p>
+<p>This user belongs to the groups that own their input and output dirs.</p>
+<p>The returned value is a dictionary that maps users to the groups they
+belong to.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.useradd">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">useradd</code><span class="sig-paren">(</span><em>invocations</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#useradd"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.useradd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the useradd part of the setup script</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.usermod">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">usermod</code><span class="sig-paren">(</span><em>invocations</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#usermod"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.usermod" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the usermod part of the setup script</p>
+</dd></dl>
+
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="#">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">PMJQ</a><ul>
+<li><a class="reference internal" href="#basic-principle">Basic principle</a></li>
+<li><a class="reference internal" href="#pmjq-concepts">PMJQ concepts</a></li>
+<li><a class="reference internal" href="#installation">Installation</a></li>
+<li><a class="reference internal" href="#the-pmjq-unix-security-model">The PMJQ Unix security model</a></li>
+<li><a class="reference internal" href="#tools">Tools</a><ul>
+<li><a class="reference internal" href="#pmjq-interactive-usage"><code class="docutils literal"><span class="pre">pmjq_interactive</span></code> usage</a></li>
+<li><a class="reference internal" href="#pmjq-viz-usage"><code class="docutils literal"><span class="pre">pmjq_viz</span></code> usage</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="#">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/index.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2016, Edouard Klein.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.7</a>
+      
+      |
+      <a href="_sources/index.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
