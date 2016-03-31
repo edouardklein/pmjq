@@ -78,7 +78,8 @@ Such a file may be used on the command line with::
 
 '''
 from collections import namedtuple
-from .templates import SETUP_TEMPLATE, MKDIR_TEMPLATE
+from .templates import SETUP_TEMPLATE, MKDIR_TEMPLATE, PMJQ_FILTER_TEMPLATE,\
+    PMJQ_BRANCH_MERGE_TEMPLATE
 
 Invocation = namedtuple('Invocation', 'inputs,command,outputs,pattern')
 Invocation.__doc__ = 'This data structure represents one invocation of pmjq'
@@ -136,7 +137,6 @@ def dir2group(invocations):
                                 + '_'+str(j)
         else:
             dir2groups[i.inputs[0]] = 'pg_'+invocation_name(invocations, i)
-    print(dir2groups.keys())
     return dir2groups
 
 
@@ -211,8 +211,34 @@ def setup(invocations):
                                  mkdir=mkdir(invocations))
 
 
+def launch(invocations):
+    '''Return the text of the launch script'''
+    def user(i):
+        return 'pu_'+invocation_name(invocations, i)
+
+    def command(i):
+        return i.command if ' ' not in i.command else '"'+i.command+'"'
+
+    def pmjq_line(i):
+        if len(i.inputs) == 1 and len(i.outputs) == 1:  # Filter call
+            return PMJQ_FILTER_TEMPLATE.format(user=user(i),
+                                               input=i.inputs[0],
+                                               filter=command(i),
+                                               output=i.outputs[0])
+        else:  # Branching or merging call
+            return PMJQ_BRANCH_MERGE_TEMPLATE.format(user=user(i),
+                                                     pattern=i.pattern,
+                                                     inputs=' '.join(i.inputs),
+                                                     cmd=command(i))
+    return '#!/usr/bin/env sh\n' + \
+        '\n'.join(pmjq_line(i) for i in sorted(invocations,
+                                               key=lambda i: i.command))+'\n'
+
+
 def pmjq_interactive():
     '''Entry point of the pmjq_interactive executable'''
     invocations = read_user_input()
     with open('setup.sh', 'w') as f:
         f.write(setup(invocations))
+    with open('launch.sh', 'w') as f:
+        f.write(launch(invocations))

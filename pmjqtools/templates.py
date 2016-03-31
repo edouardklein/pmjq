@@ -22,3 +22,8 @@ MKDIR_TEMPLATE = '''mkdir {directory}
 chmod 510 {directory}
 chown {user}:{group} {directory}
 '''
+
+PMJQ_FILTER_TEMPLATE = '''sudo -u {user} pmjq {input} {filter} {output}'''
+
+PMJQ_BRANCH_MERGE_TEMPLATE = '''sudo -u {user} pmjq --inputs "{pattern}"\
+{inputs} --cmd {cmd}'''
