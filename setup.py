@@ -8,4 +8,7 @@ setup(name='pmjqtools',
       author='Edouard Klein',
       author_email='edouard.klein  -at- gmail.com',
       license='AGPL',
-      packages=['pmjqtools'],)
+      packages=['pmjqtools'],
+      entry_points = {
+          'console_scripts': ['pmjq_interactive=pmjqtools:pmjq_interactive'],
+      },)

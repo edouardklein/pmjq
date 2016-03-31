@@ -184,15 +184,22 @@ def useradd(invocations):
                 .format(user=user, group=u2g[user][0],
                         other_groups=','.join(u2g[user][1:]))
     return '\n'.join(useradd_line(u)
-                     for u in sorted(user2groups(invocations).keys()))
+                     for u in sorted(user2groups(invocations).keys()))+'\n'
 
 
 def mkdir(invocations):
     '''Return the mkdir part of the setup script'''
     d2g = dir2group(invocations)
+    u2g = user2groups(invocations)
+
+    def user(d):
+        answer = d2g[d].replace('pg_', 'pu_')
+        if answer not in u2g:  # d is an output dir
+            answer = '`whoami`'
+        return answer
     return '\n'.join(MKDIR_TEMPLATE.format(directory=d,
                                            group=d2g[d],
-                                           user='pu_'+d)
+                                           user=user(d))
                      for d in sorted(d2g.keys()))
 
 
@@ -202,3 +209,10 @@ def setup(invocations):
                                  usermod=usermod(invocations),
                                  useradd=useradd(invocations),
                                  mkdir=mkdir(invocations))
+
+
+def pmjq_interactive():
+    '''Entry point of the pmjq_interactive executable'''
+    invocations = read_user_input()
+    with open('setup.sh', 'w') as f:
+        f.write(setup(invocations))

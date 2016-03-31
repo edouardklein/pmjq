@@ -1,2 +1,5 @@
 doc/_build/
 */__pycache__/
+build/
+dist/
+pmjqtools.egg-info/
