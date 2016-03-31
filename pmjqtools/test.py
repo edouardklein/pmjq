@@ -147,9 +147,8 @@ time.sleep(1)
 assert(subprocess.check_output(pmjq_viz_cmd + ' < setup.sh', shell=True).decode('utf8') ==
        expected_viz)
 
-print('Testing branching...')
 
-# Testing branching
+print('Testing branching')
 pmjq = pexpect.spawn(pmjq_interactive_cmd, timeout=10, logfile=open('/dev/stdout', 'wb'))
 pmjq.expect_exact('Command:')
 pmjq.sendline('ffmpeg -i $1 -map 0:v -vcodec copy video/`basename $1`.ogv -map 0:a -acodec copy audio/`basename $1`.ogg')
@@ -189,7 +188,7 @@ time.sleep(1)
 assert(open('setup.sh', 'r').read() == expected_setup_sh)
 
 
-# Testing and-merging
+print('Testing and-merging')
 pmjq = pexpect.spawn(pmjq_interactive_cmd, timeout=10, logfile=open('/dev/stdout', 'wb'))
 pmjq.expect_exact('Command:')
 pmjq.sendline('ffmpeg -i $1 -i $2 -c copy output/`basename $1`.ogg')
@@ -306,3 +305,56 @@ time.sleep(1)
 assert(open('setup.sh', 'r').read() == expected_setup_sh)
 
 
+print('Testing the whole example network')
+subprocess.call("grep -v -E '^#' < ../paper/whole_pipeline.txt |" + pmjq_interactive_cmd,
+                shell=True)
+
+expected_setup_sh='''#!/usr/bin/env sh
+groupadd pg_equalizer
+groupadd pg_ffmpeg_7d8_0
+groupadd pg_ffmpeg_7d8_1
+groupadd pg_ffmpeg_d15
+groupadd pg_is_shaky
+groupadd pg_output
+groupadd pg_stabilize
+
+usermod -a -G pg_equalizer,pg_ffmpeg_7d8_0,pg_ffmpeg_7d8_1,pg_ffmpeg_d15,pg_is_shaky,pg_output,pg_stabilize `whoami`
+
+useradd -M -N -g pg_equalizer -G pg_ffmpeg_7d8_0 pu_equalizer
+useradd -M -N -g pg_ffmpeg_7d8_0 -G pg_ffmpeg_7d8_1,pg_output pu_ffmpeg_7d8
+useradd -M -N -g pg_ffmpeg_d15 -G pg_equalizer,pg_is_shaky pu_ffmpeg_d15
+useradd -M -N -g pg_is_shaky -G pg_stabilize,pg_ffmpeg_7d8_1 pu_is_shaky
+useradd -M -N -g pg_stabilize -G pg_ffmpeg_7d8_1 pu_stabilize
+
+mkdir audio
+chmod 510 audio
+chown pu_equalizer:pg_equalizer audio
+
+mkdir equalized
+chmod 510 equalized
+chown pu_ffmpeg_7d8:pg_ffmpeg_7d8_0 equalized
+
+mkdir input
+chmod 510 input
+chown pu_ffmpeg_d15:pg_ffmpeg_d15 input
+
+mkdir output
+chmod 510 output
+chown `whoami`:pg_output output
+
+mkdir shaky
+chmod 510 shaky
+chown pu_stabilize:pg_stabilize shaky
+
+mkdir stabilized
+chmod 510 stabilized
+chown pu_ffmpeg_7d8:pg_ffmpeg_7d8_1 stabilized
+
+mkdir video
+chmod 510 video
+chown pu_is_shaky:pg_is_shaky video
+
+'''
+
+time.sleep(1)
+assert(open('setup.sh', 'r').read() == expected_setup_sh)

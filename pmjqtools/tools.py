@@ -194,14 +194,9 @@ def useradd(invocations):
     u2g = user2groups(invocations)
 
     def useradd_line(user):
-        groups = u2g[user]
-        if len(groups) == 1:
-            return 'useradd -M -N -g {group} {user}'.format(user=user,
-                                                            group=u2g[user])
-        else:
-            return 'useradd -M -N -g {group} -G {other_groups} {user}'\
-                .format(user=user, group=u2g[user][0],
-                        other_groups=','.join(u2g[user][1:]))
+        return 'useradd -M -N -g {group} -G {other_groups} {user}'\
+            .format(user=user, group=u2g[user][0],
+                    other_groups=','.join(u2g[user][1:]))
     return '\n'.join(useradd_line(u)
                      for u in sorted(user2groups(invocations).keys()))+'\n'
 
