@@ -2,10 +2,14 @@
 import pexpect
 import subprocess
 import time
+import shutil
 
+pmjq_interactive_cmd = 'coverage run --append '+shutil.which('pmjq_interactive')
+pmjq_viz_cmd = 'coverage run --append '+shutil.which('pmjq_viz')
 
 #Testing a simple chained pipeline
-pmjq = pexpect.spawn('./pmjq_interactive', timeout=10, logfile=open('/dev/stdout', 'wb'))
+pmjq = pexpect.spawn(pmjq_interactive_cmd,
+                     timeout=10, logfile=open('/dev/stdout', 'wb'))
 pmjq.expect_exact('Command:')
 pmjq.sendline('decode')
 pmjq.expect_exact('Input dir(s):')
@@ -139,14 +143,14 @@ node [shape=rect];
 }
 '''
 
-assert(subprocess.check_output('pmjq_viz < setup.sh', shell=True).decode('utf8') ==
+assert(subprocess.check_output(pmjq_viz_cmd + ' < setup.sh', shell=True).decode('utf8') ==
        expected_viz)
 
 time.sleep(1)
 print('Testing branching...')
 
 # Testing branching
-pmjq = pexpect.spawn('./pmjq_interactive', timeout=10, logfile=open('/dev/stdout', 'wb'))
+pmjq = pexpect.spawn(pmjq_interactive_cmd, timeout=10, logfile=open('/dev/stdout', 'wb'))
 pmjq.expect_exact('Command:')
 pmjq.sendline('ffmpeg -i $1 -map 0:v -vcodec copy video/`basename $1`.ogv -map 0:a -acodec copy audio/`basename $1`.ogg')
 pmjq.expect_exact('Input dir(s):')
@@ -186,7 +190,7 @@ assert(open('setup.sh', 'r').read() == expected_setup_sh)
 
 
 # Testing and-merging
-pmjq = pexpect.spawn('./pmjq_interactive', timeout=10, logfile=open('/dev/stdout', 'wb'))
+pmjq = pexpect.spawn(pmjq_interactive_cmd, timeout=10, logfile=open('/dev/stdout', 'wb'))
 pmjq.expect_exact('Command:')
 pmjq.sendline('ffmpeg -i $1 -i $2 -c copy output/`basename $1`.ogg')
 pmjq.expect_exact('Input dir(s):')
@@ -227,7 +231,7 @@ time.sleep(1)
 assert(open('setup.sh', 'r').read() == expected_setup_sh)
 
 # Testing xor-merging
-pmjq = pexpect.spawn('./pmjq_interactive', timeout=10, logfile=open('/dev/stdout', 'wb'))
+pmjq = pexpect.spawn(pmjq_interactive_cmd, timeout=10, logfile=open('/dev/stdout', 'wb'))
 pmjq.expect_exact('Command:')
 pmjq.sendline('cat')
 pmjq.expect_exact('Input dir(s):')
