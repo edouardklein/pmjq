@@ -4,9 +4,13 @@ all: test docs paper
 
 install:
 	python3 setup.py install
+	go build
+	cp pmjq /usr/local/bin/
 
 docs:
 	make -C paper whole_pipeline.png
+	cd doc && \
+    ./draw_FSM.sh | dot -T png > FSM.png
 	make -C doc html
 
 upload_docs: docs
