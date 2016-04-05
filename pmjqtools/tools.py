@@ -231,7 +231,11 @@ def launch(invocations):
         return 'pu_'+invocation_name(invocations, i)
 
     def command(i):
-        return i.command if ' ' not in i.command else '"'+i.command+'"'
+        if ' ' not in i.command:
+            return i.command
+        answer = i.command.replace('$', '\$').replace('"', '\"')
+        answer = '"'+answer.replace('`', '\`')+'"'
+        return answer
 
     def pmjq_line(i):
         if len(i.inputs) == 1 and len(i.outputs) == 1:  # Filter call
