@@ -23,6 +23,12 @@ upload_docs: docs
 		git commit -m "Doc update" && \
 		git push origin gh-pages
 
+test_pmjq:
+	rm -rf test_dir
+	mkdir test_dir
+	cd test_dir && \
+		grep -v -E '^#' < ../test.txt | pmjq_interactive  && pmjq_viz < setup.sh | dot -T pdf > test.pdf
+
 test:
 	rm -rf test_dir
 	mkdir test_dir
