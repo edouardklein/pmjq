@@ -27,7 +27,7 @@
     <link rel="top" title="PMJQ Tools 0.0.0 documentation" href="#" />
    
   
-  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
 
   </head>
   <body role="document">  
@@ -39,27 +39,27 @@
             
   <div class="section" id="module-pmjqtools">
 <span id="pmjq"></span><h1>PMJQ<a class="headerlink" href="#module-pmjqtools" title="Permalink to this headline">¶</a></h1>
-<p>The pmjqtools module provides supporting tools for the PMJQ distributed
+<p>The pmjqtools module provides supporting tools for the <code class="docutils literal"><span class="pre">pmjq</span></code> distributed
 computing framework.</p>
 <div class="section" id="basic-principle">
 <h2>Basic principle<a class="headerlink" href="#basic-principle" title="Permalink to this headline">¶</a></h2>
-<p>PMJQ is a daemon that monitors one or several input directories. It launches a
+<p><code class="docutils literal"><span class="pre">pmjq</span></code> is a daemon that monitors one or several input directories. It launches a
 process everytime there is data to process in the input directories. The
 process writes its output in one or more output directories.</p>
 <p>Multiple instances can be chained (one reading from an output directory of an
 onther), to compose an arbitrarily complex processing network.</p>
 <p>By distributing the underlying file system, one can distribute the computation
 across several nodes.</p>
-<p>The reference document for PMJQ is the <a class="reference external" href="https://github.com/edouardklein/pmjq/raw/master/paper/main.pdf">paper</a>. It
-gives an overview of PMJQ and its tooling, and demonstrate that PMJQ maps to a
+<p>The reference document for <code class="docutils literal"><span class="pre">pmjq</span></code> is the <a class="reference external" href="https://github.com/edouardklein/pmjq/raw/master/paper/main.pdf">paper</a>. It
+gives an overview of <code class="docutils literal"><span class="pre">pmjq</span></code> and its tooling, and demonstrate that <code class="docutils literal"><span class="pre">pmjq</span></code> maps to a
 powerful mathematical model of distributed computing: the Petri Nets.</p>
 </div>
 <div class="section" id="pmjq-concepts">
-<h2>PMJQ concepts<a class="headerlink" href="#pmjq-concepts" title="Permalink to this headline">¶</a></h2>
-<p>PMJQ can be used to build complex processing pipelines, with branching and
+<h2><code class="docutils literal"><span class="pre">pmjq</span></code> concepts<a class="headerlink" href="#pmjq-concepts" title="Permalink to this headline">¶</a></h2>
+<p><code class="docutils literal"><span class="pre">pmjq</span></code> can be used to build complex processing pipelines, with branching and
 merging.</p>
 <p>A <cite>pipeline</cite> is composed of multiple <cite>invocations</cite>. An invocation is a line in
-a script that calls pmjq, which will read its input from some directories and
+a script that calls <code class="docutils literal"><span class="pre">pmjq</span></code>, making it read its input from some directories and
 write its output in some others.</p>
 <p>Note that there can exist multiple <cite>instances</cite> of this invocation, on multile
 machines, to distribute the computation among the nodes of a cluster.</p>
@@ -69,21 +69,32 @@ complete data processing workflows, such as this one for video processing:</p>
 </div>
 <div class="section" id="installation">
 <h2>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="tools">
+<h3>Tools<a class="headerlink" href="#tools" title="Permalink to this headline">¶</a></h3>
+<p>The tooling can be installed with:</p>
+<div class="highlight-python"><div class="highlight"><pre>make install
+</pre></div>
+</div>
+<p>Note that this only needs to be installed on the designer&#8217;s machine. In order to run a <code class="docutils literal"><span class="pre">pmjq</span></code> pipeline, one only needs the pmjq executable which, being written in Golang, is statically linked and can therefore be copied to the computation nodes directly.</p>
+</div>
+<div class="section" id="id1">
+<h3>Paper<a class="headerlink" href="#id1" title="Permalink to this headline">¶</a></h3>
 <p>The paper can be build by issuing <code class="docutils literal"><span class="pre">make</span> <span class="pre">paper</span></code> in the root directory of the
 project. The paper&#8217;s figures are not fixed, they are built with the tooling
 provided by this package. Therefore one has to run <code class="docutils literal"><span class="pre">make</span> <span class="pre">install</span></code> beforehand</p>
 </div>
+</div>
 <span class="target" id="module-pmjqtools.tools"></span><div class="section" id="the-pmjq-unix-security-model">
-<h2>The PMJQ Unix security model<a class="headerlink" href="#the-pmjq-unix-security-model" title="Permalink to this headline">¶</a></h2>
-<p>PMJQ relies on standard Unix tooling and permissions to make sure a rogue,
-compromised of buggy program can do only limited damage.</p>
+<h2>The <code class="docutils literal"><span class="pre">pmjq</span></code> UNIX security model<a class="headerlink" href="#the-pmjq-unix-security-model" title="Permalink to this headline">¶</a></h2>
+<p><code class="docutils literal"><span class="pre">pmjq</span></code> relies on standard UNIX tooling and permissions to make sure a rogue,
+compromised, or buggy program can do only limited damage.</p>
 <p>A folder should only be read by one invocation at a time (but can be read by
 multiple instances of the same invocation).</p>
 <p>It is technically possible to have a folder be read by multiple invocation, but
 it is not advisable as the behavior is undefined : which invocation will
-process a file in the folder is anyone&#8217;s guess. It also breaks the PMJQ unix
+process a file in the folder is anyone&#8217;s guess. It also breaks the <code class="docutils literal"><span class="pre">pmjq</span></code> UNIX
 security model.</p>
-<p>The PMJQ UNIX security model is as follow:</p>
+<p>The <code class="docutils literal"><span class="pre">pmjq</span></code> UNIX security model is as follow:</p>
 <ul class="simple">
 <li>Each directory is owned by a specific group</li>
 <li>Each invocation (and thus the processes it launches) is run by a specificuser.</li>
@@ -95,10 +106,10 @@ will at most do damage only in its input and output folders, and nowhere else.</
 <p>This security model is enforced by using the scripts generated by
 <code class="docutils literal"><span class="pre">pmjq_interactive</span></code>.</p>
 </div>
-<div class="section" id="tools">
-<h2>Tools<a class="headerlink" href="#tools" title="Permalink to this headline">¶</a></h2>
-<div class="section" id="pmjq-interactive-usage">
-<h3><code class="docutils literal"><span class="pre">pmjq_interactive</span></code> usage<a class="headerlink" href="#pmjq-interactive-usage" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="id2">
+<h2>Tools<a class="headerlink" href="#id2" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="pmjq-interactive">
+<h3><code class="docutils literal"><span class="pre">pmjq_interactive</span></code><a class="headerlink" href="#pmjq-interactive" title="Permalink to this headline">¶</a></h3>
 <dl class="docutils">
 <dt>The <code class="docutils literal"><span class="pre">pmjq_interactive</span></code> tool generates three shell scripts.</dt>
 <dd><ul class="first last simple">
@@ -119,12 +130,12 @@ will at most do damage only in its input and output folders, and nowhere else.</
 in <code class="docutils literal"><span class="pre">launch.sh</span></code>, map to one invocation of <code class="docutils literal"><span class="pre">pmjq</span></code>.</p>
 <p>A transcript of a user setting up the first two invocations of our example
 pipeline using this tool would begin like this:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">Command</span><span class="p">:</span><span class="n">decode</span>
-<span class="n">Input</span> <span class="nb">dir</span><span class="p">(</span><span class="n">s</span><span class="p">):</span><span class="nb">input</span><span class="o">/</span>
-<span class="n">Output</span> <span class="nb">dir</span><span class="p">(</span><span class="n">s</span><span class="p">):</span><span class="n">decoded</span><span class="o">/</span>
-<span class="n">Command</span><span class="p">:</span><span class="n">stabilize</span>
-<span class="n">Input</span> <span class="nb">dir</span><span class="p">(</span><span class="n">s</span><span class="p">):</span><span class="n">decoded</span><span class="o">/</span>
-<span class="n">Output</span> <span class="nb">dir</span><span class="p">(</span><span class="n">s</span><span class="p">):</span><span class="n">stabilized</span><span class="o">/</span>
+<div class="highlight-python"><div class="highlight"><pre>Command:decode
+Input dir(s):input/
+Output dir(s):decoded/
+Command:stabilize
+Input dir(s):decoded/
+Output dir(s):stabilized/
 </pre></div>
 </div>
 <p>The generated scripts may have to be tweaked afterwards to add
@@ -134,7 +145,7 @@ quite well to merging, diffing and version control.</p>
 <p>The <code class="docutils literal"><span class="pre">pmjq_interactive</span></code> tool can also be used non interactively, by storing
 in a file the answers one would give to the tool&#8217;s questions. Comments can be
 added by starting a line with a #, such as:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span># Branching audio/video
+<div class="highlight-python"><div class="highlight"><pre># Branching audio/video
 ffmpeg -i $1 -map 0:v -vcodec copy video/`basename $1`.ogv -map 0:a -acodec copy audio/`basename $1`.ogg
 input
 audio video
@@ -161,17 +172,17 @@ output
 </pre></div>
 </div>
 <p>Such a file may be used on the command line with:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">grep</span> <span class="o">-</span><span class="n">v</span> <span class="o">-</span><span class="n">E</span> <span class="s1">&#39;^#&#39;</span> <span class="o">&lt;</span> <span class="n">whole_pipeline</span><span class="o">.</span><span class="n">txt</span> <span class="o">|</span> <span class="n">pmjq_interactive</span>
+<div class="highlight-python"><div class="highlight"><pre>grep -v -E &#39;^#&#39; &lt; whole_pipeline.txt | pmjq_interactive
 </pre></div>
 </div>
 </div>
-<div class="section" id="pmjq-viz-usage">
-<h3><code class="docutils literal"><span class="pre">pmjq_viz</span></code> usage<a class="headerlink" href="#pmjq-viz-usage" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="pmjq-viz">
+<h3><code class="docutils literal"><span class="pre">pmjq_viz</span></code><a class="headerlink" href="#pmjq-viz" title="Permalink to this headline">¶</a></h3>
 <p>The <code class="docutils literal"><span class="pre">pmjq_viz</span></code> tool lets you visualize the pipeline.</p>
 <p>It analyzes the <code class="docutils literal"><span class="pre">setup.sh</span></code> script generated by the <code class="docutils literal"><span class="pre">pmjq_interactive</span></code> tool
 and outputs the resulting graph in dot language. To see it in e.g. pdf, one
 can run:</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="n">pmjq_viz</span> <span class="o">&lt;</span> <span class="n">setup</span><span class="o">.</span><span class="n">sh</span> <span class="o">|</span> <span class="n">dot</span> <span class="o">-</span><span class="n">T</span> <span class="n">pdf</span> <span class="o">&gt;</span> <span class="n">whole_pipeline</span><span class="o">.</span><span class="n">pdf</span>
+<div class="highlight-python"><div class="highlight"><pre>pmjq_viz &lt; setup.sh | dot -T pdf &gt; whole_pipeline.pdf
 </pre></div>
 </div>
 <p>The fact that the vizualisation tool works from the <code class="docutils literal"><span class="pre">setup.sh</span></code> script instead
@@ -325,6 +336,11 @@ belong to.</p>
 </div>
 </div>
 </div>
+<div class="section" id="daemon">
+<h1>Daemon<a class="headerlink" href="#daemon" title="Permalink to this headline">¶</a></h1>
+<p>The daemon is a state machine:</p>
+<img alt="_images/FSM.png" src="_images/FSM.png" />
+</div>
 
 
           </div>
@@ -336,16 +352,21 @@ belong to.</p>
   <ul>
 <li><a class="reference internal" href="#">PMJQ</a><ul>
 <li><a class="reference internal" href="#basic-principle">Basic principle</a></li>
-<li><a class="reference internal" href="#pmjq-concepts">PMJQ concepts</a></li>
-<li><a class="reference internal" href="#installation">Installation</a></li>
-<li><a class="reference internal" href="#the-pmjq-unix-security-model">The PMJQ Unix security model</a></li>
-<li><a class="reference internal" href="#tools">Tools</a><ul>
-<li><a class="reference internal" href="#pmjq-interactive-usage"><code class="docutils literal"><span class="pre">pmjq_interactive</span></code> usage</a></li>
-<li><a class="reference internal" href="#pmjq-viz-usage"><code class="docutils literal"><span class="pre">pmjq_viz</span></code> usage</a></li>
+<li><a class="reference internal" href="#pmjq-concepts"><code class="docutils literal"><span class="pre">pmjq</span></code> concepts</a></li>
+<li><a class="reference internal" href="#installation">Installation</a><ul>
+<li><a class="reference internal" href="#tools">Tools</a></li>
+<li><a class="reference internal" href="#id1">Paper</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#the-pmjq-unix-security-model">The <code class="docutils literal"><span class="pre">pmjq</span></code> UNIX security model</a></li>
+<li><a class="reference internal" href="#id2">Tools</a><ul>
+<li><a class="reference internal" href="#pmjq-interactive"><code class="docutils literal"><span class="pre">pmjq_interactive</span></code></a></li>
+<li><a class="reference internal" href="#pmjq-viz"><code class="docutils literal"><span class="pre">pmjq_viz</span></code></a></li>
 </ul>
 </li>
 </ul>
 </li>
+<li><a class="reference internal" href="#daemon">Daemon</a></li>
 </ul>
 <div class="relations">
 <h3>Related Topics</h3>
@@ -369,6 +390,9 @@ belong to.</p>
       <input type="hidden" name="check_keywords" value="yes" />
       <input type="hidden" name="area" value="default" />
     </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
 </div>
 <script type="text/javascript">$('#searchbox').show(0);</script>
         </div>
@@ -379,8 +403,8 @@ belong to.</p>
       &copy;2016, Edouard Klein.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.4</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.7</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.3.3</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.6</a>
       
       |
       <a href="_sources/index.txt"

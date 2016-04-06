@@ -14,3 +14,10 @@ PMJQ
    :members:
 
 
+
+Daemon
+=========
+
+The daemon is a state machine:
+
+.. image:: FSM.png
