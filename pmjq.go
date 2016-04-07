@@ -14,9 +14,9 @@ import (
 	"github.com/docopt/docopt-go"
 	"io/ioutil"
 	"log"
-	// 	"os"
+	"os"
 	"os/exec"
-	// 	"path"
+	"path"
 	// 	"strconv"
 	// 	"strings"
 	// 	"syscall"
@@ -66,22 +66,113 @@ func scanner(input_dir string, pq *PriorityQueue) {
 	}
 }
 
-func get_filter_worker(strcmd string) func(string) {
+func get_filter_worker(strcmd string, outdir string) func(string) {
 	cmd := exec.Command(strcmd) //FIXME: Seperate command and args
-	return func(filename string) {
-		file, err := get_lock(filename)
+	return func(infname string) {
+		//The worker must acquire two locks :
+		// - one on the input file
+		// - one on the output file
+		// It will compete with other workers with the same input and output
+		// (on other machines, it makes no
+		// sense to run the same worker multiple times concurrrently
+		// on one machine, except for testing)
+		// for the input lock.
+		// It will compete with other workers (possibly on the same machine)
+		// whose inputs include its output
+		// for the output lock.
+
+		// Acquire the input lock
+		infile, err := get_locked_fd(infname)
 		if err != nil {
-			log.Printf("WARNING: actor=worker event=couldnt_get_lock file=%s\n", filename)
+			log.Printf("WARNING: actor=worker event=couldnt_get_lock_on_infile file=%s error=%s\n", infname, err)
 			return
 		}
-		log.Printf("DEBUG: actor=worker event=got_lock file=%s\n", filename)
-		//Open input file
-		//Open output file
+		defer infile.Close() // Close() releases the lock
+		log.Printf("DEBUG: actor=worker event=got_locked_infile_fd file=%s\n", infname)
+
+		//Read input file
+		indata, err := ioutil.ReadFile(infname)
+		if err != nil {
+			log.Printf("ERRROR: actor=worker event=couldnt_read_infile file=%s\n", infname)
+			return
+		}
+		if len(indata) == 0 {
+			log.Printf("ERRROR: actor=worker event=infile_empty file=%s\n", infname)
+		}
+
+		// Acquire the output lock
+		outfname := outdir + "/" + path.Base(infname)
+		outfile, err := create_locked_fd(outfname)
+		if err != nil {
+			log.Printf("ERROR: actor=worker event=couldnt_open_outfile infile=%s\n", infname)
+			return
+		}
+		defer outfile.Close() // Close() releases the lock
+		log.Printf("DEBUG: actor=worker event=got_locked_outfile_fd file=%s\n", infname)
+
 		//Get stdin and stdout fd
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			log.Printf("ERROR: actor=worker event=couldnt_get_stdin file=%s\n", infname)
+			return
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Printf("ERROR: actor=worker event=couldnt_get_stdout file=%s\n", infname)
+			return
+		}
+		//Open input file
+		indata, err := ioutil.ReadFile(infname)
+		if err != nil {
+			log.Printf("ERRROR: actor=worker event=couldnt_read_infile file=%s\n", infname)
+			return
+		}
 		//Launch the command
-		//Dump infile contents to stdin while dumping stdout to outfile
-		//Or just do it in one go
+		if err := cmd.Start(); err != nil {
+			log.Printf("ERRROR: actor=worker event=command_failed_to_launch file=%s\n", infname)
+		}
+		//Dump the infile's contents in the command's stdin
+		if _, err := stdin.Write(indata); err != nil {
+			log.Printf("ERRROR: actor=worker event=command_failed_when_reading_input file=%s\n", infname)
+		}
+		//Wait for the command to finish
+		if err := cmd.Wait(); err != nil {
+			log.Printf("ERRROR: actor=worker event=command_exited_badly file=%s\n", infname)
+		}
+		//Dump the command's stdout in the outfile
+		outdata, err := ioutil.ReadAll(stdout)
+		if err != nil {
+			log.Printf("ERRROR: actor=worker event=failed_to_read_command_output file=%s\n", infname)
+		}
+		if _, err := outfile.Write(outdata); err != nil {
+			log.Printf("ERRROR: actor=worker event=failed_to_write_in_output_file file=%s\n", infname)
+		}
+		//Close the output file, this releases the lock
+		if err := outfile.Close(); err != nil {
+			log.Printf("ERRROR: actor=worker event=failed_to_close_the_output_file file=%s\n", infname)
+		}
 	}
+}
+
+func create_locked_fd(fname string) (fd *os.File, err error) {
+	// Check if exists
+	// Create
+	file, err := os.Create(fname)
+	if err != nil {
+		return nil, err
+	}
+	// Check if locked
+	// Acquire lock
+	// Open
+	return file, nil
+}
+
+func get_locked_fd(fname string) (fd *os.File, err error) {
+	// Check if exists
+	// Check if locked
+	// Acquire lock
+	// Open
+	return nil, nil
 }
 
 // func waiting(e *fsm.Event, c chan<- string) {
