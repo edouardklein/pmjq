@@ -3,7 +3,7 @@ The ``pmjq`` UNIX security model
 ================================
 
 ``pmjq`` relies on standard UNIX tooling and permissions to make sure a rogue,
-compromised of buggy program can do only limited damage.
+compromised, or buggy program can do only limited damage.
 
 A folder should only be read by one invocation at a time (but can be read by
 multiple instances of the same invocation).
