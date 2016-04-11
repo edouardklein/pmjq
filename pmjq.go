@@ -6,8 +6,12 @@ this executable is needed on the target machine.
 */
 package main
 
-// // #include <sys/file.h>
-// import "C"
+// #include <fcntl.h>
+// int fcntl_wrapper(int fd, int cmd, struct flock* fl){
+// //Variadic functions like fcntl can't be called from go, hence the wrapper
+// return fcntl(fd, cmd, fl);
+// }
+import "C"
 
 import (
 	"container/heap"
@@ -22,6 +26,13 @@ import (
 	// 	"syscall"
 	// "time"
 )
+
+//*****************
+// Thread functions
+//*****************
+// Those functions are called as goroutines,
+// working together to make the whole program work
+// see the coordinator() for the entry point
 
 func coordinator(input_dir string, worker func(string)) {
 	// The coordinator maintains a todo list (a priority queue)
@@ -53,7 +64,10 @@ func scanner(input_dir string, pq *PriorityQueue) {
 	entries, _ := ioutil.ReadDir(input_dir) //FIXME:Check err
 	for _, file_info := range entries {
 		log.Printf("DEBUG: actor=scanner event=file_found file=%s\n", file_info.Name())
-		if is_locked(input_dir + "/" + file_info.Name()) {
+		lock, err := is_locked(input_dir + "/" + file_info.Name())
+		if err != nil {
+			log.Printf("WARNING: actor=scanner event=couldnt_get_lock_status file=%s\n", file_info.Name())
+		} else if lock {
 			log.Printf("DEBUG: actor=scanner event=locked_file file=%s\n", file_info.Name())
 		} else {
 			log.Printf("DEBUG: actor=scanner event=unlocked_file file=%s\n", file_info.Name())
@@ -99,12 +113,13 @@ func get_filter_worker(strcmd string, outdir string) func(string) {
 		if len(indata) == 0 {
 			log.Printf("ERRROR: actor=worker event=infile_empty file=%s\n", infname)
 		}
+		log.Printf("DEBUG: actor=worker event=read_input_file file=%s\n", infname)
 
 		// Acquire the output lock
 		outfname := outdir + "/" + path.Base(infname)
 		outfile, err := create_locked_fd(outfname)
 		if err != nil {
-			log.Printf("ERROR: actor=worker event=couldnt_open_outfile infile=%s\n", infname)
+			log.Printf("ERROR: actor=worker event=couldnt_create_and_lock_outfile file=%s\n", infname)
 			return
 		}
 		defer outfile.Close() // Close() releases the lock
@@ -121,50 +136,94 @@ func get_filter_worker(strcmd string, outdir string) func(string) {
 			log.Printf("ERROR: actor=worker event=couldnt_get_stdout file=%s\n", infname)
 			return
 		}
-		//Open input file
-		indata, err := ioutil.ReadFile(infname)
-		if err != nil {
-			log.Printf("ERRROR: actor=worker event=couldnt_read_infile file=%s\n", infname)
-			return
-		}
+		log.Printf("DEBUG: actor=worker event=got_cmd_stdio file=%s\n", infname)
 		//Launch the command
 		if err := cmd.Start(); err != nil {
 			log.Printf("ERRROR: actor=worker event=command_failed_to_launch file=%s\n", infname)
+			return
 		}
+		log.Printf("DEBUG: actor=worker event=cmd_launched file=%s\n", infname)
 		//Dump the infile's contents in the command's stdin
-		if _, err := stdin.Write(indata); err != nil {
+		_, err = stdin.Write(indata)
+		err2 := stdin.Close()
+		if err != nil || err2 != nil {
 			log.Printf("ERRROR: actor=worker event=command_failed_when_reading_input file=%s\n", infname)
+			return
 		}
+		log.Printf("DEBUG: actor=worker event=cmd_working file=%s\n", infname)
 		//Wait for the command to finish
 		if err := cmd.Wait(); err != nil {
 			log.Printf("ERRROR: actor=worker event=command_exited_badly file=%s\n", infname)
+			return
 		}
+		log.Printf("DEBUG: actor=worker event=cmd_finished file=%s\n", infname)
 		//Dump the command's stdout in the outfile
 		outdata, err := ioutil.ReadAll(stdout)
 		if err != nil {
 			log.Printf("ERRROR: actor=worker event=failed_to_read_command_output file=%s\n", infname)
+			return
 		}
+		log.Printf("DEBUG: actor=worker event=read_output file=%s\n", infname)
 		if _, err := outfile.Write(outdata); err != nil {
 			log.Printf("ERRROR: actor=worker event=failed_to_write_in_output_file file=%s\n", infname)
+			return
 		}
-		//Close the output file, this releases the lock
-		if err := outfile.Close(); err != nil {
-			log.Printf("ERRROR: actor=worker event=failed_to_close_the_output_file file=%s\n", infname)
-		}
+		log.Printf("DEBUG: actor=worker event=wrote_output file=%s\n", infname)
 	}
+}
+
+//****************
+// Lock functions
+//****************
+// These functions wrap calls to fcntl.
+// They let us work with file locks
+
+func is_locked(fname string) (ans bool, err error) {
+	// Check if exists and all that jazz
+	_, err = os.Stat(fname)
+	if err != nil {
+		log.Printf("ERRROR: func=is_locked event=file_unstatable file=%s\n", fname)
+		return false, err
+	}
+	// Check if locked
+	fd, err := os.Open(fname)
+	if err != nil {
+		log.Printf("ERRROR: func=is_locked event=file_unopenable file=%s\n", fname)
+		return false, err
+	}
+	fl := C.struct_flock{l_type: C.F_WRLCK} // ReadWrite lock
+	_, err = C.fcntl_wrapper(C.int(fd.Fd()), C.F_GETLK, &fl)
+	if err != nil {
+		log.Printf("ERRROR: func=is_locked event=could_not_get_locked_status file=%s\n", fname)
+		return
+	}
+	if fl.l_type != C.F_UNLCK {
+		return true, nil
+	}
+	return false, nil
 }
 
 func create_locked_fd(fname string) (fd *os.File, err error) {
 	// Check if exists
-	// Create
-	file, err := os.Create(fname)
-	if err != nil {
+	if _, err := os.Stat(fname); os.IsNotExist(err) == false {
+		log.Printf("ERRROR: func=create_locked_fd event=file_exists_or_is_unstatable file=%s\n", fname)
 		return nil, err
 	}
-	// Check if locked
+	// Create
+	fd, err = os.Open(fname)
+	if err != nil {
+		log.Printf("ERRROR: func=create_locked_fd  event=file_unopenable file=%s\n", fname)
+		return nil, err
+	}
 	// Acquire lock
-	// Open
-	return file, nil
+	fl := C.struct_flock{l_type: C.F_WRLCK} // ReadWrite lock
+	_, err = C.fcntl_wrapper(C.int(fd.Fd()), C.F_SETLK, &fl)
+	if err != nil {
+		log.Printf("ERRROR: func=create_locked_fd event=couldnt_acquire_lock file=%s\n", fname)
+		fd.Close()
+		return nil, err
+	}
+	return fd, nil
 }
 
 func get_locked_fd(fname string) (fd *os.File, err error) {
