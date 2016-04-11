@@ -210,7 +210,7 @@ func create_locked_fd(fname string) (fd *os.File, err error) {
 		return nil, err
 	}
 	// Create
-	fd, err = os.Open(fname)
+	fd, err = os.Create(fname)
 	if err != nil {
 		log.Printf("ERRROR: func=create_locked_fd  event=file_unopenable file=%s\n", fname)
 		return nil, err
