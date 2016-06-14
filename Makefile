@@ -24,10 +24,18 @@ upload_docs: docs
 		git push origin gh-pages
 
 test_pmjq:
-	rm -rf test_dir
-	mkdir test_dir
-	cd test_dir && \
-		grep -v -E '^#' < ../test.txt | pmjq_interactive  && pmjq_viz < setup.sh | dot -T pdf > test.pdf
+	rm -rf md5ed sha1ed md5_pool sha1_pool input output test_output.txt
+	mkdir md5ed sha1ed md5_pool sha1_pool input output
+	./test.sh
+	echo a > input/a
+	((echo a | md5sum) && (echo a | sha1sum)) > test_output.txt
+	while [ ! -f output/a ]
+	do
+		echo Waiting for pmjq to do its job
+		sleep 2
+	done
+	diff output/a test_output.txt
+	killall -q pmjq || true
 
 test:
 	rm -rf test_dir
