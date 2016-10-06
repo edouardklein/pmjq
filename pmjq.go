@@ -7,6 +7,7 @@ import "C"
 
 import (
 	"container/list"
+	"fmt"
 	"github.com/docopt/docopt-go"
 	"io"
 	"io/ioutil"
@@ -18,9 +19,78 @@ import (
 	"time"
 )
 
-//FIXME create a "Transition" struct that have all the required fields
-// to launch a command on a bunch of files
-// this struct should be what is passed around between workers
+type transition struct {
+	//id is a unique numerical identifier for a transition (to track its path
+	// for debugging purposes)
+	id int
+
+	//custodian is the name of the function that owns the structure
+	custodian string
+
+	//err is the non-remediable error that derailed this Transition's processing
+	err error // FIXME: Use this to process erroneous inputs
+
+	//input_dirs are the directory(ies) in which to look for input files with
+	//which to feed the command
+	input_dir string
+
+	//output_dirs are the directory(ies) in which the command may write its output
+	output_dir string
+
+	//input_files are the files from which this particular instance will read
+	input_files *list.List
+
+	//output_files are the files in which this particular instance may write
+	output_files *list.List
+
+	//lock_release is a channel on which writing will trigger the release of one
+	//locked input or output file (at random depending on the scheduler)
+	//to release all locked files, write to it as many times as there are
+	//files in the input_files and output_files lists together
+	lock_release chan int
+
+	//worker_id is the id number of the worker that will launch the actual command
+	worker_id int //FIXME: Use this field
+
+	//cmd_name is the name of the binary that will process the data
+	cmd_name string
+
+	//args is the list of arguments to be given to the binary
+	args []string
+
+	//cmd is the Cmd structure that controls the actual execution
+	cmd *exec.Cmd
+
+	//stdin is the standard input of the process
+	stdin io.WriteCloser
+
+	//stdout is the standard output of the process
+	stdout io.ReadCloser
+
+	//stderr is the standard error of the process
+	stderr io.ReadCloser
+
+	//input_fd is the input file that should be dumped to the stdin of the process
+	input_fd io.ReadCloser //FIXME: Use this field
+
+	//output_fd is the output file that should be created from the process' stdout
+	output_fd io.WriteCloser //FIXME: Use this field
+}
+
+//Pretty print a transition
+func log_transition(t transition) {
+	log.Println(t.custodian, t.id, t.input_dir, "->", t.output_dir)
+	if t.input_files != nil {
+		for f := t.input_files.Front(); f != nil; f = f.Next() {
+			log.Println("\t", f.Value.(string))
+		}
+		log.Println("\t\t--", t.cmd_name, t.args, "->")
+		for f := t.output_files.Front(); f != nil; f = f.Next() {
+			log.Println("\t", f.Value.(string))
+		}
+	}
+	log.Println("Release: ", t.lock_release)
+}
 
 //Concurrency pattern in pmjq: workers talk to each other using channels
 
@@ -29,10 +99,11 @@ import (
 //what it finds on a blocking channel
 //It also provides the files to lock in the output dirs, inferring their names
 //from the name of the files in the input dirs
-func dir_lister(input_dirs []string, output_dirs []string, to_locker chan<- []string) {
+func dir_lister(seed transition, to_locker chan<- transition) {
 	log.Println("dir_lister started")
 	time_chan := make(chan int)
 	go func() { time_chan <- 0 }()
+	last_id := seed.id
 	for true {
 		log.Println("dir_lister: Waiting on time chan")
 		_ = <-time_chan
@@ -41,32 +112,33 @@ func dir_lister(input_dirs []string, output_dirs []string, to_locker chan<- []st
 			time_chan <- 0
 		}()
 		//List the input directory(ies)
-		indir, err := filepath.Abs(input_dirs[0])
+		entries, err := ioutil.ReadDir(seed.input_dir)
 		if err != nil {
 			log.Fatal(err)
 		}
-		entries, err := ioutil.ReadDir(indir)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Println("dir_lister: listed the input directories", entries)
-		//construct an array of arguments
-		outdir, err := filepath.Abs(output_dirs[0])
-		if err != nil {
-			log.Fatal(err)
-		}
-		available_arguments := list.New()
+		log.Println("dir_lister: listing the input directory")
+		//construct a list of transitions
+		transitions := list.New()
 		for _, entry := range entries {
 			if strings.HasSuffix(entry.Name(), ".lock") { //Lockfiles are not to be processed
 				continue
 			}
-			available_arguments.PushFront([]string{indir + "/" + entry.Name(),
-				outdir + "/" + entry.Name()})
+			t := seed
+			last_id += 1
+			t.id = last_id
+			t.custodian = "dir_lister"
+			t.input_files = list.New()
+			t.input_files.PushFront(t.input_dir + "/" + entry.Name())
+			t.output_files = list.New()
+			t.output_files.PushFront(t.output_dir + "/" + entry.Name())
+			log_transition(t)
+			transitions.PushFront(t)
 		}
-		for args := available_arguments.Front(); args != nil; args = args.Next() {
+		for args := transitions.Front(); args != nil; args = args.Next() {
 			//Feed each element to the blocking channel
-			log.Println("dir_lister: sending available argument to locker:", args)
-			to_locker <- args.Value.([]string)
+			log.Println("dir_lister: sending available argument to locker:")
+			log_transition(args.Value.(transition))
+			to_locker <- args.Value.(transition)
 		}
 	}
 }
@@ -81,38 +153,43 @@ func dir_lister(input_dirs []string, output_dirs []string, to_locker chan<- []st
 //back to the spawner through locker_spawner synchro.
 //Once all arguments to a call have been locked, it passes them on to the spawner
 //via the to_spawner channel.
-func locker(from_dir_lister <-chan []string, locker_spawner_synchro chan int,
-	to_spawner chan<- []string) {
+func locker(from_dir_lister <-chan transition, locker_spawner_synchro chan int,
+	to_spawner chan<- transition) {
 	log.Println("locker started")
 	for true {
 		log.Println("locker: Waiting on dir_lister to suggest files to try to lock:")
-		files := <-from_dir_lister
-		log.Println("locker: Got files from dir_lister:", files)
+		t := <-from_dir_lister
+		t.custodian = "locker"
 		success := make(chan int)
-		release := make(chan int)
+		t.lock_release = make(chan int)
+		files := list.New()
+		files.PushFrontList(t.input_files)
+		files.PushFrontList(t.output_files)
+		log_transition(t)
 		log.Println("locker: Waiting for spawner to be ready to spawn")
 		waiting_token := <-locker_spawner_synchro //Will unblock once spawner is ready to spawn
 		log.Println("locker: Got token ", waiting_token, " from spawner, acquiring locks")
-		for _, file := range files {
-			go lock_file(file+".lock", success, release)
+		for file := files.Front(); file != nil; file = file.Next() {
+			go lock_file(file.Value.(string)+".lock", success, t.lock_release)
 		}
 		status := 0
-		for i, _ := range files {
+		for i := 0; i < files.Len(); i += 1 {
 			status += <-success
 			log.Println("locker: After iteration ", i, ", status is ", status)
 		}
 		if status != 0 { //At least one lock was not acquired
-			for i, _ := range files {
+			for i := 0; i < files.Len(); i += 1 {
 				log.Println("locker: Releasing partial lock ", i)
-				release <- status
+				t.lock_release <- status
 			}
 			log.Println("locker: Giving waiting token ", waiting_token, " back to spawner")
 			locker_spawner_synchro <- waiting_token
 			continue
 		}
 		//All locks acquired
-		log.Println("locker: Sending locked files to spawner:", files)
-		to_spawner <- files
+		log.Println("locker: Sending locked files to spawner:")
+		log_transition(t)
+		to_spawner <- t
 	}
 }
 
@@ -150,7 +227,7 @@ func lock_file(fname string, success chan<- int, release <-chan int) {
 			}()
 		case i := <-release:
 			log.Println("lock_file ", fname, "exiting ", i)
-			break
+			return
 		}
 	}
 }
@@ -195,50 +272,63 @@ func get_bucket_dumper(logid string, src io.ReadCloser, dst io.WriteCloser) (fun
 //The actual_workers are tasked with launching and monitoring the data processing tasks.
 //They receive their input on the input_channel, and they output their id
 //on the output_channel.
-func get_actual_worker(cmd exec.Cmd) func(chan []string, int, chan<- int) {
-	return func(input_channel chan []string, id int, output_channel chan<- int) {
+func get_actual_worker(seed transition) func(chan transition, int, chan<- int) {
+	return func(input_channel chan transition, id int, output_channel chan<- int) {
 		log.Println("actual_worker ", id, " started")
-		output_channel <- id
 		for true {
 			//Launch the process (done first because it can take some time)
-			log.Println("actual_worker", id, ": Launching the process")
-			stdin, err1 := cmd.StdinPipe()
-			stdout, err2 := cmd.StdoutPipe()
-			stderr, err3 := cmd.StderrPipe()
-			err4 := cmd.Start()
-			defer stdin.Close()
-			defer stdout.Close()
-			defer stderr.Close()
-			if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
-				log.Fatal(err1, err2, err3, err4)
+			log.Println("actual_worker", id, ": Launching a new process")
+			cmd := exec.Command(seed.cmd_name, seed.args...)
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				log.Fatal(err)
 			}
-			//Wait for the arguments
-			log.Println("actual_worker", id, ": waiting on arguments from spawner")
-			args := <-input_channel
-			//We launch the command
-			log.Println("actual_worker", id, ": got args: ", args)
+			defer stdin.Close()
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer stdout.Close()
+			stderr, err := cmd.StderrPipe()
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer stderr.Close()
+			err = cmd.Start()
+			if err != nil {
+				log.Fatal(err)
+			}
+			//Wait for the data
+			log.Println("actual_worker", id, ": waiting on data from spawner")
+			output_channel <- id
+			t := <-input_channel
+			t.custodian = fmt.Sprintf("actual_worker %v", id)
+			t.cmd = cmd
+			log.Println("actual_worker", id, ": got args:")
+			log_transition(t)
 			//Launch a worker that reads from disk and writes to the stdin of the command
-			f, err := os.Open(args[0])
+			f, err := os.Open(t.input_files.Front().Value.(string))
 			if err != nil {
 				log.Fatal(err)
 			}
 			defer f.Close()
-			disk_to_stdin, d2schan := get_bucket_dumper("actual_worker "+string(id)+
+			disk_to_stdin, d2schan := get_bucket_dumper(t.custodian+
 				" disk->stdin ",
 				f, stdin)
 			go disk_to_stdin()
 			//Launch a worker that reads from the command and writes to disk
-			f, err = os.Create(args[1])
+			f, err = os.Create(t.output_files.Front().Value.(string))
 			if err != nil {
 				log.Fatal(err)
 			}
 			defer f.Close()
-			stdout_to_disk, s2dchan := get_bucket_dumper("actual_worker "+string(id)+
-				" stdout->disk ",
+			stdout_to_disk, s2dchan := get_bucket_dumper(t.custodian+" stdout->disk ",
 				stdout, f)
 			go stdout_to_disk()
 			//Launch a worker that reads from the command's stderr and logs it
 			//Wait for it to finish
+			log.Println("actual_worker", id, "waiting for job to finish")
+			log_transition(t)
 			<-d2schan
 			<-s2dchan
 			err = cmd.Wait()
@@ -247,10 +337,13 @@ func get_actual_worker(cmd exec.Cmd) func(chan []string, int, chan<- int) {
 				log.Fatal(err)
 			}
 			//Remove the file from the input folder
-
-			//Release the file lock
-			//Write our id to the output channel to say we are done
-			output_channel <- id
+			err = os.Remove(t.input_files.Front().Value.(string))
+			if err != nil {
+				log.Fatal(err)
+			}
+			//Release the file locks
+			t.lock_release <- 0
+			t.lock_release <- 0
 		}
 	}
 }
@@ -260,15 +353,15 @@ func get_actual_worker(cmd exec.Cmd) func(chan []string, int, chan<- int) {
 //They read the arguments on the input channel.
 //These are given a list of arguments on their input channel as read from locker.
 //They send their id on the common output channel when they are done.
-func spawner(locker_spawner_synchro chan int, from_locker <-chan []string, nb_slots int) {
+func spawner(seed transition,
+	locker_spawner_synchro chan int, from_locker <-chan transition, nb_slots int) {
 	log.Println("spawner started")
-	input_channels := make([](chan []string), nb_slots)
+	input_channels := make([](chan transition), nb_slots)
 	output_channel := make(chan int)
 	//Initialize all the channels and the actual_workers that read from them
 	for i, _ := range input_channels {
-		input_channels[i] = make(chan []string)
-		cmd := exec.Command("sed", "s/Hello/Goodbye/") //FIXME: Create cmd in get_actual_worker, mais ça implique de connaitre la syntaxe pour passer les arguments...
-		actual_worker := get_actual_worker(*cmd)
+		input_channels[i] = make(chan transition)
+		actual_worker := get_actual_worker(seed)
 		go actual_worker(input_channels[i], i, output_channel)
 	}
 	i := <-output_channel
@@ -276,15 +369,16 @@ func spawner(locker_spawner_synchro chan int, from_locker <-chan []string, nb_sl
 		log.Println("spawner: actual_woker", i, " is waiting on locker")
 		locker_spawner_synchro <- i //Signal locker that we are ready
 		//to work by sending it a waiting token
-		log.Println("spawner: waiting to hear back from locker")
 		select {
 		case i = <-locker_spawner_synchro: //Locker gives us our token back: it could
 			//not get the locks
 			log.Println("spawner: locker is giving our token back: ", i)
-		case args := <-from_locker:
-			input_channels[i] <- args //Signal this actual_worker to start working
-			log.Println("spawner: actual worker ", i,
-				"fed, waiting for another worker to be available")
+		case t := <-from_locker:
+			t.custodian = "spawner"
+			input_channels[i] <- t //Signal this actual_worker to start working
+			log.Println("spawner: actual worker ", i, "fed with")
+			log_transition(t)
+			log.Println("spawner: waiting for another worker to be available")
 			i = <-output_channel
 		}
 	}
@@ -310,14 +404,28 @@ func main() {
 	}
 	log.Println("pmjq started")
 	log.Println(arguments)
-	input_dirs := []string{arguments["<input-dir>"].(string)}
-	output_dirs := []string{arguments["<output-dir>"].(string)}
-	from_dir_lister_to_locker := make(chan []string)
-	go dir_lister(input_dirs, output_dirs, from_dir_lister_to_locker)
-	from_locker_to_spawner := make(chan []string)
+	input_dir, err := filepath.Abs(arguments["<input-dir>"].(string))
+	if err != nil {
+		log.Fatal(err)
+	}
+	output_dir, err := filepath.Abs(arguments["<output-dir>"].(string))
+	if err != nil {
+		log.Fatal(err)
+	}
+	seed := transition{
+		id:         0,
+		custodian:  "Nobody",
+		input_dir:  input_dir,
+		output_dir: output_dir,
+		cmd_name:   "sed",
+		args:       []string{"s/Hello/Goodbye/"},
+	}
+	from_dir_lister_to_locker := make(chan transition)
+	go dir_lister(seed, from_dir_lister_to_locker)
+	from_locker_to_spawner := make(chan transition)
 	locker_spawner_synchro := make(chan int)
 	go locker(from_dir_lister_to_locker, locker_spawner_synchro, from_locker_to_spawner)
-	go spawner(locker_spawner_synchro, from_locker_to_spawner, 2)
+	go spawner(seed, locker_spawner_synchro, from_locker_to_spawner, 2)
 
 	c := make(chan int)
 	<-c
