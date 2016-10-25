@@ -79,17 +79,32 @@ type transition struct {
 
 //Pretty print a transition
 func log_transition(t transition) {
-	log.Println(t.custodian, t.id, t.input_dir, "->", t.output_dir)
+	//0 Nobody     in/? ?-cmd ???? (????)-> out/? ??????? //Seed
+	//1 dir_lister in/f ?-cmd args (????)-> out/f ??????? //with files
+	//1 locker     in/f ?-cmd args (????)-> out/f release //with locked files
+	//1 worker1    in/f 1-cmd args (1334)-> out/f release //with attributed worker
+	//1 worker1    in/f 1-[30]-cmd args (1334)-> out/f release //feeding input
+	//1 worker1    in/f 1-cmd args (1334)-[30]-> out/f release //getting output
+	in := fmt.Sprintf("%v/?", t.input_dir)
+	out := fmt.Sprintf("%v/?", t.output_dir)
+	worker_id := "?"
+	pid := "?????"
+	release := "?"
 	if t.input_files != nil {
-		for f := t.input_files.Front(); f != nil; f = f.Next() {
-			log.Println("\t", f.Value.(string))
-		}
-		log.Println("\t\t--", t.cmd_name, t.args, "->")
-		for f := t.output_files.Front(); f != nil; f = f.Next() {
-			log.Println("\t", f.Value.(string))
-		}
+		in = t.input_files.Front().Value.(string)
+		out = t.output_files.Front().Value.(string)
 	}
-	log.Println("Release: ", t.lock_release)
+	if t.worker_id != -1 {
+		worker_id = fmt.Sprintf("%v", t.worker_id)
+	}
+	if t.cmd != nil {
+		pid = fmt.Sprintf("%v", t.cmd.Process.Pid)
+	}
+	if t.lock_release != nil {
+		release = fmt.Sprintf("%v", t.lock_release)
+	}
+	log.Printf("%v %v\t%v\t%v-%v %v (%v)-> %v\t%v",
+		t.id, t.custodian, in, worker_id, t.cmd_name, t.args, pid, out, release)
 }
 
 //Concurrency pattern in pmjq: workers talk to each other using channels
@@ -232,7 +247,7 @@ func lock_file(fname string, success chan<- int, release <-chan int) {
 	}
 }
 
-// Return a function that read from src in buckets of 4096 and dumps them in dst
+// Read from src in buckets of 4096 and dumps them in dst
 // It logs everything in the process, appending logid before
 func get_bucket_dumper(logid string, src io.ReadCloser, dst io.WriteCloser) (func(), chan error) {
 	c := make(chan error)
@@ -303,27 +318,30 @@ func get_actual_worker(seed transition) func(chan transition, int, chan<- int) {
 			output_channel <- id
 			t := <-input_channel
 			t.custodian = fmt.Sprintf("actual_worker %v", id)
+			t.worker_id = id
 			t.cmd = cmd
+			t.stdin = stdin
+			t.stdout = stdout
+			t.stderr = stderr
 			log.Println("actual_worker", id, ": got args:")
 			log_transition(t)
 			//Launch a worker that reads from disk and writes to the stdin of the command
-			f, err := os.Open(t.input_files.Front().Value.(string))
+			t.input_fd, err = os.Open(t.input_files.Front().Value.(string))
 			if err != nil {
 				log.Fatal(err)
 			}
-			defer f.Close()
-			disk_to_stdin, d2schan := get_bucket_dumper(t.custodian+
-				" disk->stdin ",
-				f, stdin)
+			defer t.input_fd.Close()
+			disk_to_stdin, d2schan := get_bucket_dumper(t.custodian+" disk->stdin ",
+				t.input_fd, t.stdin)
 			go disk_to_stdin()
 			//Launch a worker that reads from the command and writes to disk
-			f, err = os.Create(t.output_files.Front().Value.(string))
+			t.output_fd, err = os.Create(t.output_files.Front().Value.(string))
 			if err != nil {
 				log.Fatal(err)
 			}
-			defer f.Close()
+			defer t.output_fd.Close()
 			stdout_to_disk, s2dchan := get_bucket_dumper(t.custodian+" stdout->disk ",
-				stdout, f)
+				t.stdout, t.output_fd)
 			go stdout_to_disk()
 			//Launch a worker that reads from the command's stderr and logs it
 			//Wait for it to finish
@@ -417,6 +435,7 @@ func main() {
 		custodian:  "Nobody",
 		input_dir:  input_dir,
 		output_dir: output_dir,
+		worker_id:  -1,
 		cmd_name:   "sed",
 		args:       []string{"s/Hello/Goodbye/"},
 	}
