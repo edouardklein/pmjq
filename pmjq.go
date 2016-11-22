@@ -9,6 +9,7 @@ import (
 	"container/list"
 	"fmt"
 	"github.com/docopt/docopt-go"
+	"github.com/mattn/go-shellwords"
 	"io"
 	"io/ioutil"
 	"log"
@@ -430,14 +431,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	cmd_argv, err := shellwords.Parse(arguments["<filter>"].(string))
+	if err != nil {
+		log.Fatal(err)
+	}
 	seed := transition{
 		id:         0,
 		custodian:  "Nobody",
 		input_dir:  input_dir,
 		output_dir: output_dir,
 		worker_id:  -1,
-		cmd_name:   "sed",
-		args:       []string{"s/Hello/Goodbye/"},
+		cmd_name:   cmd_argv[0],
+		args:       cmd_argv[1:],
 	}
 	from_dir_lister_to_locker := make(chan transition)
 	go dir_lister(seed, from_dir_lister_to_locker)
