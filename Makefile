@@ -2,9 +2,11 @@ DOC_STAGE_DIR=~/Bureau/pmjq_docs/
 
 all: test docs paper
 
-install:
+pmjq: pmjq.go
+	go build --ldflags '-extldflags "-static"'
+
+install: pmjq
 	python3 setup.py install
-	go build
 	cp pmjq /usr/local/bin/
 
 docs:
