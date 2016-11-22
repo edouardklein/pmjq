@@ -25,6 +25,7 @@ upload_docs: docs
 
 test_pmjq:
 	test_cases/bug_10.sh
+	test_cases/func_error.sh
 
 test:
 	rm -rf test_dir

@@ -38,11 +38,18 @@ type transition struct {
 	//output_dirs are the directory(ies) in which the command may write its output
 	output_dir string
 
+	//error_dirs are the directory(ies) in which the command will copy error-generating files
+	error_dir string
+
 	//input_files are the files from which this particular instance will read
 	input_files *list.List
 
 	//output_files are the files in which this particular instance may write
 	output_files *list.List
+
+	//error_files are the files in which this particular instance will store
+	//error-triggering input files
+	error_files *list.List
 
 	//lock_release is a channel on which writing will trigger the release of one
 	//locked input or output file (at random depending on the scheduler)
@@ -151,6 +158,10 @@ func dir_lister(seed transition, to_locker chan<- transition, quit_empty bool) {
 			t.input_files.PushFront(t.input_dir + "/" + entry.Name())
 			t.output_files = list.New()
 			t.output_files.PushFront(t.output_dir + "/" + entry.Name())
+			if t.error_dir != "" {
+				t.error_files = list.New()
+				t.error_files.PushFront(t.error_dir + "/" + entry.Name())
+			}
 			log_transition(t)
 			transitions.PushFront(t)
 		}
@@ -353,38 +364,52 @@ func get_actual_worker(seed transition) func(chan transition, int, chan<- int) {
 			log.Println("actual_worker", id, ": got args:")
 			log_transition(t)
 			//Launch a worker that reads from disk and writes to the stdin of the command
-			t.input_fd, err = os.Open(t.input_files.Front().Value.(string))
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer t.input_fd.Close()
-			disk_to_stdin, d2schan := get_bucket_dumper(t.custodian+" disk->stdin ",
-				t.input_fd, t.stdin)
-			go disk_to_stdin()
-			//Launch a worker that reads from the command and writes to disk
-			t.output_fd, err = os.Create(t.output_files.Front().Value.(string))
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer t.output_fd.Close()
-			stdout_to_disk, s2dchan := get_bucket_dumper(t.custodian+" stdout->disk ",
-				t.stdout, t.output_fd)
-			go stdout_to_disk()
-			//Launch a worker that reads from the command's stderr and logs it
-			//Wait for it to finish
-			log.Println("actual_worker", id, "waiting for job to finish")
-			log_transition(t)
-			<-d2schan
-			<-s2dchan
-			err = cmd.Wait()
-			if err != nil {
-				//FIXME: Move the file to the error destination
-				log.Fatal(err)
-			}
-			//Remove the file from the input folder
-			err = os.Remove(t.input_files.Front().Value.(string))
-			if err != nil {
-				log.Fatal(err)
+			//Wrapping it in an anonymous func so that Close() is called as soon
+			//as we are finished with the FDs
+			// http://grokbase.com/t/gg/golang-nuts/134883hv3h/go-nuts-io-closer-and-closing-previously-closed-object
+			if err := func() error {
+				t.input_fd, err = os.Open(t.input_files.Front().Value.(string))
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer t.input_fd.Close()
+				disk_to_stdin, d2schan := get_bucket_dumper(t.custodian+" disk->stdin ",
+					t.input_fd, t.stdin)
+				go disk_to_stdin()
+				//Launch a worker that reads from the command and writes to disk
+				t.output_fd, err = os.Create(t.output_files.Front().Value.(string))
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer t.output_fd.Close()
+				stdout_to_disk, s2dchan := get_bucket_dumper(t.custodian+" stdout->disk ",
+					t.stdout, t.output_fd)
+				go stdout_to_disk()
+				//FIXME: Launch a worker that reads from the command's stderr and logs it
+				//Wait for it to finish
+				log.Println("actual_worker", id, "waiting for job to finish")
+				log_transition(t)
+				<-d2schan
+				<-s2dchan
+				return cmd.Wait()
+			}(); err != nil {
+				if t.error_dir == "" {
+					log.Fatal(err)
+				}
+				//Move the input files to the error_dir
+				err = os.Rename(t.input_files.Front().Value.(string),
+					t.error_files.Front().Value.(string))
+				if err != nil {
+					log.Fatal(err)
+				}
+				//Remove the (probably incomplete) output file
+				os.Remove(t.output_files.Front().Value.(string))
+			} else {
+				//Remove the file from the input folder
+				err = os.Remove(t.input_files.Front().Value.(string))
+				if err != nil {
+					log.Fatal(err)
+				}
 			}
 			//Release the file locks
 			t.lock_release <- 0
@@ -433,14 +458,15 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	usage := `pmjq.
 
-	Usage: pmjq [--quit-when-empty] <input-dir> <filter> <output-dir>
+	Usage: pmjq [--quit-when-empty] [--error-dir=<error-dir>] <input-dir> <filter> <output-dir>
 	       pmjq -h | --help
 	       pmjq --version
 
   Options:
-     --help -h          Show this message
-     --version          Show version information and exit
-     --quit-when-empty  Exit with 0 status when the input dir is empty
+     --help -h                Show this message
+     --version                Show version information and exit
+     --quit-when-empty        Exit with 0 status when the input dir is empty
+     --error-dir=<error-dir>  If specified, dont crash on error but move incriminated file to this dir
 `
 	arguments, err := docopt.Parse(usage, nil, true, "Poor Man's Job Queue, v 1.0.0", false)
 	if err != nil {
@@ -456,6 +482,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	var error_dir string
+	if arguments["--error-dir"] != nil {
+		error_dir, err = filepath.Abs(arguments["--error-dir"].(string))
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 	cmd_argv, err := shellwords.Parse(arguments["<filter>"].(string))
 	if err != nil {
 		log.Fatal(err)
@@ -465,6 +498,7 @@ func main() {
 		custodian:  "Nobody",
 		input_dir:  input_dir,
 		output_dir: output_dir,
+		error_dir:  error_dir,
 		worker_id:  -1,
 		cmd_name:   cmd_argv[0],
 		args:       cmd_argv[1:],
