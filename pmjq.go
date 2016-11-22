@@ -115,7 +115,7 @@ func log_transition(t transition) {
 //what it finds on a blocking channel
 //It also provides the files to lock in the output dirs, inferring their names
 //from the name of the files in the input dirs
-func dir_lister(seed transition, to_locker chan<- transition) {
+func dir_lister(seed transition, to_locker chan<- transition, quit_empty bool) {
 	log.Println("dir_lister started")
 	time_chan := make(chan int)
 	go func() { time_chan <- 0 }()
@@ -131,6 +131,10 @@ func dir_lister(seed transition, to_locker chan<- transition) {
 		entries, err := ioutil.ReadDir(seed.input_dir)
 		if err != nil {
 			log.Fatal(err)
+		}
+		if quit_empty && len(entries) == 0 {
+			log.Println("Nothing left to do, exiting")
+			os.Exit(0)
 		}
 		log.Println("dir_lister: listing the input directory")
 		//construct a list of transitions
@@ -157,6 +161,18 @@ func dir_lister(seed transition, to_locker chan<- transition) {
 			to_locker <- args.Value.(transition)
 		}
 	}
+}
+
+//This function is the abort function for the locker, when something went
+//during lock aquisition
+func lock_abort(release_chan chan int, nb_locks int, waiting_token int,
+	locker_spawner_synchro chan int) {
+	for i := 0; i < nb_locks; i += 1 {
+		log.Println("locker_abort: Releasing partial lock ", i)
+		release_chan <- 1
+	}
+	log.Println("locker_abort: Giving waiting token ", waiting_token, " back to spawner")
+	locker_spawner_synchro <- waiting_token
 }
 
 //The locker worker tries to get a lock on the arguments provided to it by dir_lister.
@@ -194,15 +210,25 @@ func locker(from_dir_lister <-chan transition, locker_spawner_synchro chan int,
 			log.Println("locker: After iteration ", i, ", status is ", status)
 		}
 		if status != 0 { //At least one lock was not acquired
-			for i := 0; i < files.Len(); i += 1 {
-				log.Println("locker: Releasing partial lock ", i)
-				t.lock_release <- status
-			}
-			log.Println("locker: Giving waiting token ", waiting_token, " back to spawner")
-			locker_spawner_synchro <- waiting_token
+			lock_abort(t.lock_release, files.Len(), waiting_token,
+				locker_spawner_synchro)
 			continue
 		}
 		//All locks acquired
+		status = 0
+		for file := t.input_files.Front(); file != nil; file = file.Next() {
+			if _, err := os.Stat(file.Value.(string)); os.IsNotExist(err) {
+				//If file does not exist
+				status = -1
+				break
+			}
+		}
+		if status != 0 { //At least one file no longer exists
+			lock_abort(t.lock_release, files.Len(), waiting_token,
+				locker_spawner_synchro)
+			continue
+		}
+		//All files exist
 		log.Println("locker: Sending locked files to spawner:")
 		log_transition(t)
 		to_spawner <- t
@@ -407,15 +433,14 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	usage := `pmjq.
 
-	Usage: pmjq [options] <input-dir> <filter> <output-dir>
-	       pmjq [options] --multi <cmd> <pattern> <indir>...
+	Usage: pmjq [--quit-when-empty] <input-dir> <filter> <output-dir>
 	       pmjq -h | --help
 	       pmjq --version
 
   Options:
-     --help -h   Show this message
-     --version   Show version information and exit
-     --multi -m  Launch a branching or merging invocation
+     --help -h          Show this message
+     --version          Show version information and exit
+     --quit-when-empty  Exit with 0 status when the input dir is empty
 `
 	arguments, err := docopt.Parse(usage, nil, true, "Poor Man's Job Queue, v 1.0.0", false)
 	if err != nil {
@@ -445,11 +470,11 @@ func main() {
 		args:       cmd_argv[1:],
 	}
 	from_dir_lister_to_locker := make(chan transition)
-	go dir_lister(seed, from_dir_lister_to_locker)
+	go dir_lister(seed, from_dir_lister_to_locker, arguments["--quit-when-empty"].(bool))
 	from_locker_to_spawner := make(chan transition)
 	locker_spawner_synchro := make(chan int)
 	go locker(from_dir_lister_to_locker, locker_spawner_synchro, from_locker_to_spawner)
-	go spawner(seed, locker_spawner_synchro, from_locker_to_spawner, 2)
+	go spawner(seed, locker_spawner_synchro, from_locker_to_spawner, 15)
 
 	c := make(chan int)
 	<-c
