@@ -41,6 +41,9 @@ type transition struct {
 	//error_dirs are the directory(ies) in which the command will copy error-generating files
 	error_dir string
 
+	//log_dir are the directory in which the command will dump its stderr
+	log_dir string
+
 	//input_files are the files from which this particular instance will read
 	input_files *list.List
 
@@ -50,6 +53,10 @@ type transition struct {
 	//error_files are the files in which this particular instance will store
 	//error-triggering input files
 	error_files *list.List
+
+	//log_files are the files in which this particular instance will store
+	//the stderr of the processing command
+	log_files *list.List
 
 	//lock_release is a channel on which writing will trigger the release of one
 	//locked input or output file (at random depending on the scheduler)
@@ -79,10 +86,13 @@ type transition struct {
 	stderr io.ReadCloser
 
 	//input_fd is the input file that should be dumped to the stdin of the process
-	input_fd io.ReadCloser //FIXME: Use this field
+	input_fd io.ReadCloser
 
 	//output_fd is the output file that should be created from the process' stdout
-	output_fd io.WriteCloser //FIXME: Use this field
+	output_fd io.WriteCloser
+
+	//log_fd is the output file that should be created from the process' stderr
+	log_fd io.WriteCloser
 }
 
 //Pretty print a transition
@@ -161,6 +171,10 @@ func dir_lister(seed transition, to_locker chan<- transition, quit_empty bool) {
 			if t.error_dir != "" {
 				t.error_files = list.New()
 				t.error_files.PushFront(t.error_dir + "/" + entry.Name())
+			}
+			if t.log_dir != "" {
+				t.log_files = list.New()
+				t.log_files.PushFront(t.log_dir + "/" + entry.Name())
 			}
 			log_transition(t)
 			transitions.PushFront(t)
@@ -386,11 +400,27 @@ func get_actual_worker(seed transition) func(chan transition, int, chan<- int) {
 					t.stdout, t.output_fd)
 				go stdout_to_disk()
 				//FIXME: Launch a worker that reads from the command's stderr and logs it
+				var stderr_to_disk func()
+				var e2dchan chan error
+				if t.log_dir != "" {
+					t.log_fd, err = os.Create(t.log_files.Front().Value.(string))
+					if err != nil {
+						log.Fatal(err)
+					}
+					defer t.log_fd.Close()
+					stderr_to_disk, e2dchan = get_bucket_dumper(
+						t.custodian+" stderr->disk ",
+						t.stderr, t.log_fd)
+					go stderr_to_disk()
+				}
 				//Wait for it to finish
 				log.Println("actual_worker", id, "waiting for job to finish")
 				log_transition(t)
 				<-d2schan
 				<-s2dchan
+				if e2dchan != nil {
+					<-e2dchan
+				}
 				return cmd.Wait()
 			}(); err != nil {
 				if t.error_dir == "" {
@@ -458,7 +488,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	usage := `pmjq.
 
-	Usage: pmjq [--quit-when-empty] [--error-dir=<error-dir>] <input-dir> <filter> <output-dir>
+	Usage: pmjq [--quit-when-empty] [--error-dir=<error-dir>] [--log-dir=<log-dir>] <input-dir> <filter> <output-dir>
 	       pmjq -h | --help
 	       pmjq --version
 
@@ -467,6 +497,7 @@ func main() {
      --version                Show version information and exit
      --quit-when-empty        Exit with 0 status when the input dir is empty
      --error-dir=<error-dir>  If specified, dont crash on error but move incriminated file to this dir
+     --log-dir=<log-dir>      If specified, write stderr of command somewhere in this dir
 `
 	arguments, err := docopt.Parse(usage, nil, true, "Poor Man's Job Queue, v 1.0.0", false)
 	if err != nil {
@@ -489,6 +520,13 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	var log_dir string
+	if arguments["--log-dir"] != nil {
+		log_dir, err = filepath.Abs(arguments["--log-dir"].(string))
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 	cmd_argv, err := shellwords.Parse(arguments["<filter>"].(string))
 	if err != nil {
 		log.Fatal(err)
@@ -499,6 +537,7 @@ func main() {
 		input_dir:  input_dir,
 		output_dir: output_dir,
 		error_dir:  error_dir,
+		log_dir:    log_dir,
 		worker_id:  -1,
 		cmd_name:   cmd_argv[0],
 		args:       cmd_argv[1:],
@@ -508,7 +547,7 @@ func main() {
 	from_locker_to_spawner := make(chan transition)
 	locker_spawner_synchro := make(chan int)
 	go locker(from_dir_lister_to_locker, locker_spawner_synchro, from_locker_to_spawner)
-	go spawner(seed, locker_spawner_synchro, from_locker_to_spawner, 15)
+	go spawner(seed, locker_spawner_synchro, from_locker_to_spawner, 1)
 
 	c := make(chan int)
 	<-c

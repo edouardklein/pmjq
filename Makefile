@@ -25,9 +25,10 @@ upload_docs: docs
 		git commit -m "Doc update" && \
 		git push origin gh-pages
 
-test_pmjq:
+test_pmjq: pmjq
 	test_cases/bug_10.sh
 	test_cases/func_error.sh
+	test_cases/func_log.sh
 
 test:
 	rm -rf test_dir
