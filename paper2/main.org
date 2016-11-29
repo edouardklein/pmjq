@@ -1,0 +1,160 @@
+#+TITLE: The untapped depth of the /var/spool/ directory
+
+* Introduction
+** Describe the problem (use examples)
+Chaining data processing programs in a parallel, distributed, scalable way.
+Supervise execution of said programs.
+Make it all fault tolerant.
+** State your contributions
+bullet list of refutable contributions (claims)
+
+- Pain free deployment of barely prototyped tool
+  - Errors logged and ready to be made test cases
+- Separation of concerns between data-processing code and distribution code
+  - Fits well with the unix philisophy of doing one thing and doing it well
+- Highly portable
+- Hides complexity away from the programmer, using a well understood, ubiquitous abstraction (the FS) which enjoys a variety of implementations
+  - is fault tolerant by design
+    - The data is in the FS (at-least-once delivery)
+    - UNIX rights to handle compromised or faulty binaries
+  - Allow for easy access to the processing (just drop the file in the bin)
+  - Allow the use of low level UNIX tools (ls, lsof, ps, etc) for crisis management
+  - Seemlessly allows for distribution across multiple machines KEY POINT
+- Provides a high level mathematical abstraction (the petri Net) for vizualization (both building and supervision) and analysis
+* The problem
+Why is it interesting (use examples, as on a whiteboard)
+** Data in, data out
+Exemple CRPJ, Malware.
+
+Problem of formats.
+
+Distribution across machines.
+
+** Fault tolerance.
+
+bad input
+
+crash (machine down)
+
+network fault
+
+** No modifiction of the source code
+Oblige pas à changer de langage
+
+** Constrained data sources
+Sur intranet, on peut pas installer n'imp. Droper dans un dossier, ça on peut.
+** Scale machines up and down
+
+Chaque machine a des voisins qui annoncent le nombre de workers
+Chaque machine essaye de matcher le nombre de workers qu'elle croit nécessaire (nombre de fichier lockable) avec le nombre de jobs disponibles
+- En allumant les voisins appropriés s'il y a trop de boulot
+- En s'éteignant si ses voisins peuvent supporter la charge
+
+Comment éviter le sur-allumage ou le sur-éteignage ?
+Il faut répartir les évaluation dans le temps -> Ne le faire que quand on liste le dossier à traiter.
+Il faut limiter le nombre de voisins qu'on peut allumer d'un coup
+Plus on peut allumer de voisins d'un coup plus on monte en charge vite. Est-ce que ça rend le système instable ?
+
+Topologie en couche où on ne peut s'éteindre que si la couche inférieure est éteinte ?
+
+Complexité d'un réseau fully connected ? -> Probablement trop grande, à tester. Problème du sac à dos ?
+
+Comment éviter les partitions de réseau si non fully connected ?
+
+Lorsqu'on décide de s'éteindre, juste s'abstenir de répondre aux requêtes, et finir ses jobs, puis s'éteindre.
+* The solution
+How it works (again, use examples, as on a whiteboard)
+
+Using zygomys
+
+#+begin_src scheme
+  ;; With zygomys SexpToGo ou SexpToGoStructs
+  ;; On commence avec un filtre
+  (filter "indir" '("sed" "s/Hello/Goodbye") "outdir") ;; Shortform
+
+  (transition
+   :regex (regex "{timestamp}_({base64}{4}).html")
+   :inputs '("input1" "input2" "input3")
+   :outputs '('("output1" "${timestamp}.json")
+              '("output2" "${timestamp}_$2.html"))
+   :cmd "sed s/Hello/Goodbye/g"
+   :log "logdir"
+   :dbg '("dbgdir")
+   :error "errordir"
+   :id "sed" ;???
+   )
+
+  ;; Ca donne une transition
+  (transition
+   :input "indir"
+   :cmd_name "sed"
+   :cmd_args '("s/Hello/Goodbye")
+   :id "sed"
+   :error '() ; Add an error dir to go if something goes wrong
+   :dbg '() ; Add dbg dirs to go to copy the input files
+   :log '() ; Add somewhere to log the stderr of the command
+   :output "outdir")
+
+  ;; Il faut qu'on récupère cette transition comme une struct Go de type transition, mais dont le nom
+  ;; doit changer en trigger
+  ;; qui correspond à la seed, qu'on va ensuite enrichir en Go dans pmjq
+
+  (transition ;; The data structure to launch pmjq
+   (input ;; List of (dir regexp group#) triplets
+    (("indir" ;; First dir in which to look for files to process
+      ".*" ;; Regex that files to process must match
+      0))) ;; In the event of a multiple input transition, number of group that must be the same across all matching files
+   (program ("cat" "-o" 1 2)) ;; Program to run
+   (id "filter") ;; Unique id of this transition Optional defaults to program name
+   (output 
+    ("outdir"))
+              (error '("errdir"))
+              (debug '("dbgdir")))
+
+  ;; The data structure to launch one program (inside pmjq)
+  (trigger :input-files
+           :...
+           :pid
+           :hostname
+           )
+
+  ;; The data structure to describe the topology on which to run one transition
+  (distribution :name "vm1"
+                :transition "filter"
+                :neighboors '("vm2" "vm3"))
+#+end_src
+
+** Scratch
+Our solution is simple, and that is the whole point. By sticking to UNIX basics, we are able to forego a lot of complexity and avoid reinventing many wheels. As trivial as our solution may seem when exposed in the detailed way we present it here, one can see that not everybody understands the appeal of simplicity, and most distribution mechanisms are huge rube goldberg machines.
+
+* The evidence
+Show that it works
+Forward reference from the claim.
+Analysis, comparison, theormes, measurments, case studies.
+** Separation of concerns
+Write code about one single instance of data (example video data) only, don't care about the distribution///ization at all.
+
+All this complexity is hidden to the business specialist.
+** Rapid prototyping
+Write a command line utility, test cursorily on the command line. Once it works, integrate in the flowchart. Bug triggering input become test cases. Antifragile.
+
+* Related work
+Be generous and charitable to the competition
+Acknowledge weakness in our approach
+
+** Unix Pipe
+
+** All users of /var/spool
+lpd ?
+** Plan 9
+** Big load of bullshit like *MQ
+
+
+* Scratch
+
+Baidu FS ?
+RAMFS
+Tester quelques-uns des FS qu'on a envisagé dans le papier précedent
+** Remarques des reviewers
+- En quoi est-ce meilleur que les alternatives ?
+- DSL
