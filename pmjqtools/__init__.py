@@ -57,4 +57,5 @@ project. The paper's figures are not fixed, they are built with the tooling
 provided by this package. Therefore one has to run ``make install`` beforehand
 
 '''
+import hy
 from .tools import *
