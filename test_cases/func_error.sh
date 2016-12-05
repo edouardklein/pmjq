@@ -6,13 +6,13 @@ set -o pipefail
 
 PLAYGROUND=/tmp
 
+rm -rf ${PLAYGROUND}/input
+rm -rf ${PLAYGROUND}/output
+rm -rf ${PLAYGROUND}/error
+
 mkdir -p ${PLAYGROUND}/input
 mkdir -p ${PLAYGROUND}/output
 mkdir -p ${PLAYGROUND}/error
-
-rm -rf ${PLAYGROUND}/input/*
-rm -rf ${PLAYGROUND}/output/*
-rm -rf ${PLAYGROUND}/error/*
 
 echo OK > ${PLAYGROUND}/input/OK.txt
 echo error > ${PLAYGROUND}/input/error.txt

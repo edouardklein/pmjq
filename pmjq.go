@@ -488,7 +488,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	usage := `pmjq.
 
-	Usage: pmjq [--quit-when-empty] [--error-dir=<error-dir>] [--log-dir=<log-dir>] <input-dir> <filter> <output-dir>
+	Usage: pmjq [--quit-when-empty] [--error-dir=<error-dir>]  [--log-dir=<log-dir>] <input-dir> [--input-regex=<regex>] <filter>  <output-dir> [--output-pattern=<output-pattern>]
 	       pmjq -h | --help
 	       pmjq --version
 

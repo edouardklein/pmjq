@@ -1,0 +1,12 @@
+* TODO Mettre en place le DL de Denis
+* TODO Add a --lock option
+  If the lock is taken, pmjq quits, because it means it is already launched. It is useless to launch two instances on the same machine.
+* TODO Remove extraneous log
+  Juste afficher les transitions, pas le blabla sur les attentes.
+* TODO Add name transformation
+  à la sed, mais avec le paquet regex de GO
+* TODO Merger les deux repos
+* TODO Think about a paranoid option
+  =chroot= and =su -u pmjq_dlfkjsdl= 
+* TODO Create a dot output for a transition
+* TODO Mettre en place l'analyse des C&C Locky avec PMJQ
