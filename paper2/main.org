@@ -70,7 +70,7 @@ Using zygomys
 #+begin_src scheme
   ;; With zygomys SexpToGo ou SexpToGoStructs
   ;; On commence avec un filtre
-  (filter "indir" '("sed" "s/Hello/Goodbye") "outdir") ;; Shortform
+  (filter "indir" "sed s/Hello/Goodbye" "outdir") ;; Shortform
 
   (transition
    :regex (regex "{timestamp}_({base64}{4}).html")
@@ -79,8 +79,8 @@ Using zygomys
               '("output2" "${timestamp}_$2.html"))
    :cmd "sed s/Hello/Goodbye/g"
    :log "logdir"
-   :dbg '("dbgdir")
-   :error "errordir"
+   :dbg '("dbgdir") :error "errordir"
+ 
    :id "sed" ;???
    )
 
@@ -131,6 +131,32 @@ Our solution is simple, and that is the whole point. By sticking to UNIX basics,
 Show that it works
 Forward reference from the claim.
 Analysis, comparison, theormes, measurments, case studies.
+** Case study one, off-hours dowloader
+   Alice's department internet access is very slow.
+   Bob's department has five gateways that mostly sit unused at night.
+   Bob can log in with SSH to one particular machine in Alice's department. There is no other link between both department's intranet.
+
+   How can Bob let Alice and her colleagues use his department's gateways at night ?
+
+   Please take a moment to think of a solution before reading on.
+
+   We will just create a spool dir where Alice's colleagues will write files containing the URLs they wish to fetch.
+
+   At night 5 computers in Bob's department, each connecting to one of the five gateways, will launch pmjq on this spool dir. The spool dir is mounted in their namespace with sshfs. pmjq is implementing the following transition:
+#+begin_src hy
+  (transition
+   :error "/var/spool/dl/error"
+   :log "/var/spool/dl/log"
+   :inputs ["/var/spool/dl/input"]
+   :outputs ["/var/spool/dl/output"]
+   :cmd "dl"
+   :pmjq-log "$(hostname)_pmjq.log"
+   :lock ["/var/spool/dl/$(hostname.lock)"])
+#+end_src
+
+When they login the next morning, Alice and her colleague will find their files in the =/var/spool/dl/output/= directory.
+
+
 ** Separation of concerns
 Write code about one single instance of data (example video data) only, don't care about the distribution///ization at all.
 
@@ -147,6 +173,13 @@ Acknowledge weakness in our approach
 ** All users of /var/spool
 lpd ?
 ** Plan 9
+   - Créer un namespace où tous les services nécessaires, et uniquement les services nécessaires, sont montés.
+   - Lancer le processus
+   - On ne se soucie que des fichiers, car tout est accessible par fichier.
+
+// à chez nous avec l'utilisation de chroot, pledge(?), mount, etc.
+
+   - Plan9 était trop classse parce que si on montait pas /net, le process n'avais pas accès à internet, là c'est plus dur de restreindre un process
 ** Big load of bullshit like *MQ
 
 
