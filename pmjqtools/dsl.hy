@@ -26,9 +26,12 @@ if tmux list-sessions | grep {id}; then
   tmux kill-session -t {id}
 fi
 tmux new-session -d -s {id} bash
-for couple in $(env); do
-  tmux setenv -t {id} $(echo $couple | tr '=' ' ')
+OLDIFS=${IFS}
+IFS=$'\n'
+for couple in $(printenv); do
+  tmux setenv -t html2json $(cut -d'=' -f1 <<<$couple) $(cut -d'=' -f2- <<<$couple)
 done
+IFS=${OLDIFS}
 #Creating a panel and closing the old one so that the new one gets the environment we want
 tmux split-window -t {id} bash
 tmux kill-pane -t 1 -a
