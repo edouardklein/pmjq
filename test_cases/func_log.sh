@@ -11,20 +11,20 @@ sys.stderr.write('Hello stderr');\
 sys.stdout.write(sys.stdin.read())"
 EOF
 
+rm -rf ${PLAYGROUND}/input
+rm -rf ${PLAYGROUND}/output
+rm -rf ${PLAYGROUND}/error
+rm -rf ${PLAYGROUND}/log
+
 mkdir -p ${PLAYGROUND}/input
 mkdir -p ${PLAYGROUND}/output
 mkdir -p ${PLAYGROUND}/error
 mkdir -p ${PLAYGROUND}/log
 
-rm -rf ${PLAYGROUND}/input/*
-rm -rf ${PLAYGROUND}/output/*
-rm -rf ${PLAYGROUND}/error/*
-rm -rf ${PLAYGROUND}/log/*
-
 echo this file is a token whose content doesnt matter > ${PLAYGROUND}/input/stderr.txt
 
 cd "$(dirname "$0")"
-../pmjq --quit-when-empty --log-dir=${PLAYGROUND}/log --error-dir=${PLAYGROUND}/error ${PLAYGROUND}/input "${EXAMPLE_COMMAND}" ${PLAYGROUND}/output &> ${PLAYGROUND}/pmjq.log
+../pmjq --quit-when-empty --log=${PLAYGROUND}'/log/$0' --stderr=${PLAYGROUND}'/error/$0' ${PLAYGROUND}'/input/.*' "${EXAMPLE_COMMAND}" ${PLAYGROUND}'/output/$0' &> ${PLAYGROUND}/pmjq.log
 
 if [ ! -f ${PLAYGROUND}/output/stderr.txt ]; then
     echo "File was not processed"

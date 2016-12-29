@@ -10,7 +10,7 @@ set -x
 set -o pipefail
 
 PLAYGROUND=/tmp
-MD5_CMD=md5
+MD5_CMD=md5sum
 
 rm -rf ${PLAYGROUND}/input
 rm -rf ${PLAYGROUND}/output
@@ -26,7 +26,7 @@ do
 done
 
 cd "$(dirname "$0")"
-../pmjq --quit-when-empty ${PLAYGROUND}/input "${MD5_CMD}" ${PLAYGROUND}/output &> ${PLAYGROUND}/pmjq.log
+../pmjq --quit-when-empty ${PLAYGROUND}'/input/.*' ${MD5_CMD} ${PLAYGROUND}'/output/$0' &> ${PLAYGROUND}/pmjq.log
 
 if [ -f ${PLAYGROUND}/error/* ]; then
     echo "There were errors but there should not have been any"
