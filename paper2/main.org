@@ -65,11 +65,7 @@ Lorsqu'on décide de s'éteindre, juste s'abstenir de répondre aux requêtes, e
 * The solution
 How it works (again, use examples, as on a whiteboard)
 
-Using zygomys
-
 #+begin_src scheme
-  ;; With zygomys SexpToGo ou SexpToGoStructs
-  ;; On commence avec un filtre
   (filter "indir" "sed s/Hello/Goodbye" "outdir") ;; Shortform
 
   (transition
@@ -123,6 +119,13 @@ Using zygomys
                 :transition "filter"
                 :neighboors '("vm2" "vm3"))
 #+end_src
+
+Expliquer ce que j'ai dessiné au tableau:
+Les inputs sont des patterns (éventuellement avec un invariant s'il y en a plusieurs)
+et tous les outputs (stderr, log et error aussi) sont des templates qu'on expand
+notamment en fonction de ce qu'on a matché avec les patterns de l'input
+
+Dire que par défaut, si on donne un dossier, alors c'est le template .match 0 0 qui est utilisé
 
 ** Scratch
 Our solution is simple, and that is the whole point. By sticking to UNIX basics, we are able to forego a lot of complexity and avoid reinventing many wheels. As trivial as our solution may seem when exposed in the detailed way we present it here, one can see that not everybody understands the appeal of simplicity, and most distribution mechanisms are huge rube goldberg machines.

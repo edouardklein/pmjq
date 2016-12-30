@@ -3,21 +3,37 @@
 (defn pmjq-command [transition-sexpr]
   "Return the command to launch in a shell to activate the given transition"
   (defn transition [&kwargs kwargs]
+    (assert (!= (in "stdin" kwargs) (in "inputs" kwargs))  ; XOR
+            "Use either stdin or inputs but not both nor neither")
+    (assert (!= (in "stdout" kwargs) (in "outputs" kwargs))  ; XOR
+            "Use either stdout or outputs but not both nor neither")
+    (assert (not (and (in "error" kwargs) (in "errors" kwargs)))  ; NAND
+            "Use either error or errors but not both (but you can use neither)")
+    (if (in "stdin" kwargs)
+      (setv (. kwargs ["inputs"]) [(. kwargs ["stdin"])]))
+    (if (in "stdout" kwargs)
+      (setv (. kwargs ["outputs"]) [(. kwargs ["stdout"])]))
+    (if (in "error" kwargs)
+      (setv (. kwargs ["errors"]) [(. kwargs ["error"])]))
     (+ "pmjq "
-       (if (in "log" kwargs)
-         (+ "--log-dir=" (get kwargs "log") " ")
-         "")
-       (if (in "error" kwargs)
-         (+ "--error-dir=" (get kwargs "error") " ")
-         "")
        (if (and (in "quit_empty" kwargs) (get kwargs "quit_empty"))
          "--quit-when-empty "
          "")
-       (get (get kwargs "inputs") 0) " "
-       (shlex.quote (get kwargs "cmd")) " "
-       (get (get kwargs "outputs") 0) " "
-       (if (in "pmjq_log" kwargs)
-         (+ "2>" (get kwargs "pmjq_log"))
+       (.join " "
+              (map (fn [inpattern] (+ "--input=" inpattern)) (. kwargs ["inputs"]))) " "
+       (get kwargs "cmd") " "
+       (.join " "
+              (map (fn [outtemplate] (+ "--output=" outtemplate)) (. kwargs ["outputs"]))) " "
+       (if (in "stderr" kwargs)
+         (+ "--stderr=" (get kwargs "stderr") " ")
+         "")
+       (if (in "errors" kwargs)
+         (+ (.join " "
+                   (map (fn [errtemplate] (+ "--error=" errtemplate)) (. kwargs ["errors"])))
+            " ")
+         "")
+       (if (in "log" kwargs)
+         (+ "&> " (get kwargs "log"))
          "")))
   (eval transition-sexpr))
 

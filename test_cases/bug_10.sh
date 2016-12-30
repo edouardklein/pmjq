@@ -26,7 +26,7 @@ do
 done
 
 cd "$(dirname "$0")"
-../pmjq --quit-when-empty ${PLAYGROUND}'/input/.*' ${MD5_CMD} ${PLAYGROUND}'/output/$0' &> ${PLAYGROUND}/pmjq.log
+pmjq --quit-when-empty --input=${PLAYGROUND}/input/'.*' ${MD5_CMD} --output=${PLAYGROUND}/output/ &> ${PLAYGROUND}/pmjq.log
 
 if [ -f ${PLAYGROUND}/error/* ]; then
     echo "There were errors but there should not have been any"

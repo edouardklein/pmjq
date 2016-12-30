@@ -31,6 +31,9 @@ test_pmjq: pmjq
 	test_cases/func_log.sh
 	test_cases/func_regex_pattern.sh
 
+test_pmjqtools:
+	test_cases/func_command_gen.sh
+
 test:
 	rm -rf test_dir
 	mkdir test_dir
