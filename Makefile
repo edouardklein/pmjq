@@ -6,7 +6,7 @@ pmjq: pmjq.go
 	go build --ldflags '-extldflags "-static"'
 
 install: pmjq
-	python3 setup.py install
+	# python3 setup.py install --old-and-unmanageable
 	cp pmjq /usr/local/bin/
 
 docs:
@@ -34,14 +34,18 @@ test_pmjq: pmjq
 test_pmjqtools:
 	test_cases/func_command_gen.sh
 
+#test: test_pmjqtools test_pmjq
+
 test:
-	rm -rf test_dir
-	mkdir test_dir
-	cd test_dir && \
-		../pmjqtools/test.py && \
-		coverage report | grep pmjq
+	pmjq --quit-when-empty '--input=/tmp/input/.*' md5sum --output=/tmp/output/
 
 paper: paper/main.pdf install
 
 paper/main.pdf:
 	make -C paper
+
+lint:
+	golint pmjq.go
+
+# With entr:
+#  find . -regextype posix-extended -type f -iregex '(.*\.(sh|hy|py|go)|\./Makefile)' | entr -rc make install test | grcat conf.gcc

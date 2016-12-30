@@ -20,7 +20,11 @@
          "--quit-when-empty "
          "")
        (.join " "
-              (map (fn [inpattern] (+ "--input=" inpattern)) (. kwargs ["inputs"]))) " "
+              (map (fn [inpattern] (+ "--input=" inpattern)) (. kwargs ["inputs"])))
+       " "
+       (if (in "invariant" kwargs)
+         (+ "--invariant=" (. kwargs ["invariant"]) " ")
+         "")
        (get kwargs "cmd") " "
        (.join " "
               (map (fn [outtemplate] (+ "--output=" outtemplate)) (. kwargs ["outputs"]))) " "
