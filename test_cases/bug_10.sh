@@ -1,4 +1,47 @@
 #!/usr/bin/env bash
+# Trying to process 10.000 files exposes a race condition in a previous version of PMJQ
+# What happens most of the time:
+#  dirLister             locker, worker, etc.
+#      |
+#    List---------------------+
+#      |                      |
+#      |                    Lock
+#      |                      |
+#      |                    Process
+#      |                      |
+#      |                    Remove
+#      |                      |
+#      |                    Unlock
+#      |
+#     List---------------------------------+
+#                                          |
+#                                        Lock
+#                                          |
+#                                        Process
+#                                          |
+#                                        Remove
+#                                          |
+#                                        ...
+# What happens sometimes and makes everything crash:
+#   dirLister              locker, worker, etc.
+#       |
+#     List-------------------------|
+#       |                          |
+#       |                        Lock
+#       |                          |
+#       |                        Process
+#       |                          |
+#      List----------------------------------|
+#       |                          |         |
+#       |                        Remove      |
+#       |                          |         |
+#       |                        Unlock      |
+#       |                          |         |
+#       |                          |       Lock
+#       |                          |         |
+#       |                          |       Process /!\ Files don't exist anymore
+#
+# One solution is to forbid the locking of non existant files
 # If the locker does not check if a file exist before it gives it to the spawner,
 # sometimes we have a bad time (we open a file that does not exist anymore)
 # The bug does not appear when the number is small (~ 100)
@@ -28,10 +71,7 @@ done
 cd "$(dirname "$0")"
 pmjq --quit-when-empty --input=${PLAYGROUND}/input/'.*' ${MD5_CMD} --output=${PLAYGROUND}/output/ &> ${PLAYGROUND}/pmjq.log
 
-if [ -f ${PLAYGROUND}/error/* ]; then
-    echo "There were errors but there should not have been any"
-    exit 1
-fi
+ls ${PLAYGROUND}/output/ | wc -l | grep -x 10000  # 10000 files were processed
 
 if [ -f ${PLAYGROUND}/input/* ]; then
     echo "Not all files in the input dir have been processed"
