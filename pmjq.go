@@ -422,6 +422,9 @@ func goBucketDumper(t Transition, srcdst string) chan error {
 	} else if srcdst == "stdout->disk" {
 		src = t.stdout
 		dst = t.outputFd
+	} else if srcdst == "stderr->disk" {
+		src = t.stderr
+		dst = t.logFd
 	}
 	go func() {
 		data := make([]byte, 4096)
@@ -445,6 +448,8 @@ func goBucketDumper(t Transition, srcdst string) chan error {
 				log.Printf("%v --[%04v]", t, n)
 			} else if srcdst == "stdout->disk" {
 				log.Printf("%v [%04v]-->", t, n)
+			} else if srcdst == "stderr->disk" {
+				log.Printf("%v [%04v]-|", t, n)
 			}
 			start := 0
 			for start < n {
@@ -519,28 +524,29 @@ func actualWorker(t Transition, id int, outputChannel chan<- int) {
 		}
 		defer t.outputFd.Close()
 		s2dchan := goBucketDumper(t, "stdout->disk")
-		//FIXME: Launch a worker that reads from the command's stderr and logs it
-		//var stderr_to_disk func()
-		//var e2dchan chan error
-		// if t.log_dir != "" {
-		// 	t.log_fd, err = os.Create(t.log_files.Front().Value.(string))
-		// 	if err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// 	defer t.log_fd.Close()
-		// 	stderr_to_disk, e2dchan = get_bucket_dumper(
-		// 		t.custodian+" stderr->disk ",
-		// 		t.stderr, t.log_fd)
-		// 	go stderr_to_disk()
-		// }
+		//Launch a worker that reads from the command's stderr and logs it
+		var e2dchan chan error
+		if t.logFile != (DirPattern{}) {
+			var b bytes.Buffer
+			err := t.logFile.template.Execute(&b, t)
+			if err != nil {
+				log.Fatal(err)
+			}
+			t.logFile.file = b.String() //FIXME: Tout ça doit se trouver dans une fonction de DirPattern
+			t.logFd, err = os.Create(t.logFile.String())
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer t.logFd.Close()
+			e2dchan = goBucketDumper(t, "stderr->disk")
+		}
 		//Wait for it to finish
 		log.Printf("%v Waiting for job to finish", t)
-		//log_transition(t)
 		<-d2schan
 		<-s2dchan
-		//if e2dchan != nil {
-		//	<-e2dchan
-		//}
+		if e2dchan != nil {
+			<-e2dchan
+		}
 		return t.cmd.Wait()
 	}(); err != nil {
 		if t.errors == nil {
@@ -660,16 +666,6 @@ func main() {
 	}
 	log.Printf("%v Output templates\n", seed)
 	if len(arguments["--error"].([]string)) > 0 {
-		//FIXME: write this
-		// var error_dir string
-		// if arguments["--error-dir"] != nil {
-		// 	error_dir, err = filepath.Abs(arguments["--error-dir"].(string))
-		// 	if err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// }
-	}
-	if arguments["--error"] != nil {
 		for _, errtemplate := range arguments["--error"].([]string) {
 			dir, tmplt := filepath.Split(errtemplate)
 			if tmplt == "" {
@@ -677,6 +673,13 @@ func main() {
 			}
 			seed.errors = append(seed.errors, DirPattern{dir, nil, template.Must(template.New("One of the errors").Parse(tmplt)), ""})
 		}
+	}
+	if arguments["--stderr"] != nil {
+		dir, tmplt := filepath.Split(arguments["--stderr"].(string))
+		if tmplt == "" {
+			tmplt = "{{.Input 0}}" //Unspecified template defaults to same name as first input file
+		}
+		seed.logFile = DirPattern{dir, nil, template.Must(template.New("The log file").Parse(tmplt)), ""}
 	}
 	// cmd_argv, err := shellwords.Parse(arguments["<filter>"].(string))
 	// if err != nil {

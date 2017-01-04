@@ -28,7 +28,7 @@ upload_docs: docs
 test_pmjq: pmjq
 	test_cases/bug_10.sh
 	test_cases/func_error.sh
-#	test_cases/func_log.sh
+	test_cases/func_log.sh
 #	test_cases/func_regex_pattern.sh
 
 test_pmjqtools:
