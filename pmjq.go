@@ -543,17 +543,26 @@ func actualWorker(t Transition, id int, outputChannel chan<- int) {
 		//}
 		return t.cmd.Wait()
 	}(); err != nil {
-		//if t.error_dir == "" {
-		//	log.Fatal(err)
-		//}
-		// //Move the input files to the error_dir
-		// err = os.Rename(t.input_files.Front().Value.(string),
-		// 	t.error_files.Front().Value.(string))
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-		// //Remove the (probably incomplete) output file
-		// os.Remove(t.output_files.Front().Value.(string))
+		if t.errors == nil {
+			log.Fatal(err)
+		}
+		//Move the input files to the error_dirs
+		for i := range t.errors {
+			var b bytes.Buffer
+			err := t.errors[i].template.Execute(&b, t)
+			if err != nil {
+				log.Fatal(err)
+			}
+			t.errors[i].file = b.String()
+			err = os.Rename(t.inputs[i].String(), t.errors[i].String())
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		// //Remove the (probably incomplete, maybe nonexisting) output file
+		for i := range t.outputs {
+			os.Remove(t.outputs[i].String())
+		}
 	} else {
 		//Remove the file from the input folder
 		err = os.Remove(t.inputs[0].String())
@@ -660,15 +669,14 @@ func main() {
 		// 	}
 		// }
 	}
-	if arguments["--stderr"] != nil {
-		//FIXME: write this
-		// var log_dir string
-		// if arguments["--log-dir"] != nil {
-		// 	log_dir, err = filepath.Abs(arguments["--log-dir"].(string))
-		// 	if err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// }
+	if arguments["--error"] != nil {
+		for _, errtemplate := range arguments["--error"].([]string) {
+			dir, tmplt := filepath.Split(errtemplate)
+			if tmplt == "" {
+				tmplt = "{{.Input 0}}" //Unspecified template defaults to same name as first input file
+			}
+			seed.errors = append(seed.errors, DirPattern{dir, nil, template.Must(template.New("One of the errors").Parse(tmplt)), ""})
+		}
 	}
 	// cmd_argv, err := shellwords.Parse(arguments["<filter>"].(string))
 	// if err != nil {

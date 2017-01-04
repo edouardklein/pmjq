@@ -28,16 +28,16 @@ upload_docs: docs
 test_pmjq: pmjq
 	test_cases/bug_10.sh
 	test_cases/func_error.sh
-	test_cases/func_log.sh
-	test_cases/func_regex_pattern.sh
+#	test_cases/func_log.sh
+#	test_cases/func_regex_pattern.sh
 
 test_pmjqtools:
 	test_cases/func_command_gen.sh
 
-#test: test_pmjqtools test_pmjq
+test: test_pmjq #test_pmjqtools test_pmjq
 
-test:
-	pmjq --quit-when-empty '--input=/tmp/input/.*' md5sum --output=/tmp/output/
+#test:
+#	pmjq --quit-when-empty '--input=/tmp/input/.*' md5sum --output=/tmp/output/
 
 paper: paper/main.pdf install
 
