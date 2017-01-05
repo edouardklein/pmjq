@@ -5,36 +5,101 @@ set -x
 set -o pipefail
 
 PLAYGROUND=/tmp
+! read -d '' EXAMPLE_COMMAND <<"EOF"
+python3 -c "import sys
+sys.stderr.write('Hello stderr')
+data1 = open(sys.argv[1]).read()
+data2 = open(sys.argv[2]).read()
+if data1 != data2:
+    sys.exit(1)
+open(sys.argv[3], 'w').write('ok')
+open(sys.argv[4], 'w').write('ok')"
+EOF
 
-rm -rf ${PLAYGROUND}/input
-rm -rf ${PLAYGROUND}/output
 
-mkdir -p ${PLAYGROUND}/input
-mkdir -p ${PLAYGROUND}/output
+rm -rf ${PLAYGROUND}/input0
+rm -rf ${PLAYGROUND}/input1
+rm -rf ${PLAYGROUND}/outputA
+rm -rf ${PLAYGROUND}/outputB
+rm -rf ${PLAYGROUND}/error0
+rm -rf ${PLAYGROUND}/error1
+rm -rf ${PLAYGROUND}/log
 
-echo -n ok > ${PLAYGROUND}/input/aaa_OK.txt
-echo -n ok > ${PLAYGROUND}/input/bbb_OK.txt
-echo -n ok > ${PLAYGROUND}/input/ccc_OK.txt
-echo -n ok > ${PLAYGROUND}/input/ddd_OK.txt
-echo -n itsatrap > ${PLAYGROUND}/input/eee_OK.mp3
-echo -n notok > ${PLAYGROUND}/input/notok.txt
-echo -n badnamepattern > ${PLAYGROUND}/input/lkfqsdmfjsd
+mkdir -p ${PLAYGROUND}/input0
+mkdir -p ${PLAYGROUND}/input1
+mkdir -p ${PLAYGROUND}/outputA
+mkdir -p ${PLAYGROUND}/outputB
+mkdir -p ${PLAYGROUND}/error0
+mkdir -p ${PLAYGROUND}/error1
+mkdir -p ${PLAYGROUND}/log
+
+echo -n oka > ${PLAYGROUND}/input0/aaa_OK.txt
+echo -n okb > ${PLAYGROUND}/input0/bbb_OK.txt
+echo -n okc > ${PLAYGROUND}/input0/ccc_OK.txt
+echo -n okd > ${PLAYGROUND}/input0/ddd_OK.txt
+echo -n error0 > ${PLAYGROUND}/input0/err_foo.txt
+echo -n badnamepattern > ${PLAYGROUND}/input0/foobar
+
+
+echo -n oka > ${PLAYGROUND}/input1/Foo_aaa.txt
+echo -n okb > ${PLAYGROUND}/input1/Foo_bbb.txt
+echo -n okc > ${PLAYGROUND}/input1/Foo_ccc.txt
+echo -n okd > ${PLAYGROUND}/input1/Foo_ddd.txt
+echo -n error1 > ${PLAYGROUND}/input1/bar_err.txt
+echo -n badnamepattern > ${PLAYGROUND}/input1/barfoo
+
+
 
 cd "$(dirname "$0")"
-pmjq --quit-when-empty --input=${PLAYGROUND}/input0/'(?P<id>...)_(?P<suffix>.*)\.txt' --input=${PLAYGROUND}/input1/'(?P<prefix>.*)_(?P<id>...)\.sum' --invariant='$id' "cat ${PLAYGROUND}/input0/'{{.input 0}}'" --output=${PLAYGROUND}/outputA/'{{.namedmatch.id}}_{{.namedmatch.prefix}}_{{.namedmatch.suffix}}.txt' --output=${PLAYGROUND}/outputB/'{{call .timestamp}}_{{.invariant}}' --stderr=${PLAYGROUND}/log/'{{.invariant}}.log' --error=${PLAYGROUND}/error0/'{{index .match 0 0}}' --error=${PLAYGROUND}/error1/'{{index .match 1 0}}' &> ${PLAYGROUND}/pmjq.log
+pmjq \
+    --quit-when-empty\
+    --input=${PLAYGROUND}/input0/'(?P<id>...)_(?P<suffix>.*)\.txt'\
+    --input=${PLAYGROUND}/input1/'(?P<prefix>.*)_(?P<id>...)\.txt'\
+    --invariant='$id'\
+    "${EXAMPLE_COMMAND} ${PLAYGROUND}/input0/'{{.Input 0}}' ${PLAYGROUND}/input1/'{{.Input 1}}' ${PLAYGROUND}/outputA/'{{.NamedMatches.id}}_{{.NamedMatches.prefix}}_{{.NamedMatches.suffix}}.txt' ${PLAYGROUND}/outputB/'{{.Invariant}}.txt'"\
+    --output=${PLAYGROUND}/outputA/'{{.NamedMatches.id}}_{{.NamedMatches.prefix}}_{{.NamedMatches.suffix}}.txt'\
+    --output=${PLAYGROUND}/outputB/'{{.Invariant}}.txt'\
+    --stderr=${PLAYGROUND}/log/'{{.Invariant}}.log'\
+    --error=${PLAYGROUND}/error0/'{{.Input 0}}'\
+    --error=${PLAYGROUND}/error1/'{{.Input 1}}' &> ${PLAYGROUND}/pmjq.log
 
-for prefix in aaa bbb ccc ddd
+for id in aaa bbb ccc ddd
 do
-    if [ ! -f ${PLAYGROUND}/output/${prefix}_ok_PROCESSED.txt ]; then
-        echo "Output file ${prefix}_ok_PROCESSED.txt does not exist "
+    if [ ! -f ${PLAYGROUND}/outputA/${id}_Foo_OK.txt ]; then
+        echo "Output file outputA/${id}_Foo_OK.txt does not exist"
+        exit 1
+    fi
+    if [ ! -f ${PLAYGROUND}/outputB/${id}.txt ]; then
+        echo "Output file outputB/${id}.txt does not exist"
+        exit 1
+    fi
+    if [ ! -f ${PLAYGROUND}/log/${id}.log ]; then
+        echo "Output file log/${id}.log does not exist"
         exit 1
     fi
 done
 
-for file in eee_OK.mp3 notok.txt lkfqsdmfjsd
-do
-    if [ ! -f ${PLAYGROUND}/input/${file} ]; then
-        echo "Non matching input file ${file} was deleted"
-        exit 1
-    fi
-done
+if [ ! -f ${PLAYGROUND}/input0/foobar ]; then
+    echo "Non matching input file input0/foobar was deleted"
+    exit 1
+fi
+
+if [ ! -f ${PLAYGROUND}/input1/barfoo ]; then
+    echo "Non matching input file input1/barfoo was deleted"
+    exit 1
+fi
+
+if [ ! -f ${PLAYGROUND}/error0/err_foo.txt ]; then
+    echo "Error file error0/err_foo.txt was not moved"
+    exit 1
+fi
+
+if [ ! -f ${PLAYGROUND}/error1/bar_err.txt ]; then
+    echo "Error file error1/bar_err.txt was not moved"
+    exit 1
+fi
+
+if [ ! -f ${PLAYGROUND}/log/err.log ]; then
+    echo "Log file log/err.log does not exist"
+    exit 1
+fi

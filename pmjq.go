@@ -37,23 +37,32 @@ func NextIndex(ix []int, lens func(i int) int) {
 
 //DirPattern bears a directory, either a pattern or a template, and, when instanciated from those to elements, a file
 type DirPattern struct {
-	dir      string
-	pattern  *regexp.Regexp
-	template *template.Template
-	file     string
+	dir            string
+	patternString  string
+	pattern        regexp.Regexp
+	templateString string
+	template       template.Template
+	file           string
+}
+
+func (dp DirPattern) isNull() bool {
+	if dp.patternString == "" && dp.templateString == "" && dp.file == "" {
+		return true
+	}
+	return false
 }
 
 //Return the path of the file (or the tentative pattern or template if no file has been found)
 func (dp DirPattern) String() string {
-	if dp.pattern == nil && dp.template == nil && dp.file == "" {
+	if dp.isNull() {
 		log.Fatal("I need at least one of pattern, template or file")
 	}
 	if dp.file != "" {
 		return fmt.Sprintf("%v%v", dp.dir, dp.file)
-	} else if dp.template != nil {
-		return fmt.Sprintf("%v%v", dp.dir, dp.template)
+	} else if dp.templateString != "" {
+		return fmt.Sprintf("%v%v", dp.dir, dp.templateString)
 	} //dp.pattern is not ""
-	return fmt.Sprintf("%v%v", dp.dir, dp.pattern)
+	return fmt.Sprintf("%v%v", dp.dir, dp.patternString)
 }
 
 //FixedWidthString returns a fixed-width string representation of dp, truncated at the beginning
@@ -70,10 +79,10 @@ func PrettyFormatDirPatterns(l []DirPattern) string {
 	answer := "["
 	for _, dp := range l {
 		answer += dp.FixedWidthString()
-		answer += ","
+		answer += ", "
 	}
-	if answer[len(answer)-1] == ',' {
-		answer = answer[:len(answer)-1] + "]" // Removing the last ','
+	if answer[len(answer)-2:] == ", " {
+		answer = answer[:len(answer)-2] + "] " // Removing the last ','
 	} else {
 		answer += "]"
 	}
@@ -97,6 +106,17 @@ type Transition struct {
 	//for input files to feed an instance of the command with and in which
 	//we store the files once we found them
 	inputs []DirPattern
+
+	//invariantTemplate is what will be expanded to make the Invariant
+	//after the input file names are matched
+	invariantTemplate string
+
+	//Invariant is the common part of all input file names
+	Invariant string
+
+	//NamedMatches maps the name of a subgroup its value in the last input file
+	//that matched a regex with a subgroup of this name
+	NamedMatches map[string]string
 
 	//outputs are the (directory, template, file) triplet(s) in which an instance
 	//of the command may write its output
@@ -161,11 +181,11 @@ func (t Transition) String() string {
 	} else { // Assuming t.cmd_template != nil
 		cmd = fmt.Sprintf("%v", t.cmdTemplate)
 	}
-	cmd = fmt.Sprintf("%-30.30v", cmd)
+	cmd = fmt.Sprintf("%-30.30v", strings.Replace(cmd, "\n", " ", -1))
 	pid := "??????"
 	out := PrettyFormatDirPatterns(t.outputs)
 	log := ""
-	if t.logFile != (DirPattern{}) {
+	if !t.logFile.isNull() {
 		log = t.logFile.FixedWidthString()
 	}
 	if t.cmd != nil {
@@ -206,7 +226,7 @@ func candidateInputs(seed Transition, quitEmpty bool) []Transition {
 			if strings.HasSuffix(entry.Name(), ".lock") { //Lockfiles are not to be processed
 				continue
 			}
-			newDp := DirPattern{dp.dir, dp.pattern.Copy(), nil, ""}
+			newDp := dp
 			if !newDp.pattern.MatchString(entry.Name()) { //We only add files that abide by the pattern
 				continue
 			}
@@ -229,14 +249,31 @@ func candidateInputs(seed Transition, quitEmpty bool) []Transition {
 	transitions := make([]Transition, 0, cardinal)
 	lens := func(i int) int { return len(lle[i]) }
 	lastID := seed.id
+transitionAccumulation:
 	for ix := make([]int, len(lle)); ix[0] < lens(0); NextIndex(ix, lens) {
 		t := seed
 		t.id = lastID + 1
 		lastID++
 		t.custodian = "candidate"
+		t.NamedMatches = make(map[string]string)
 		t.inputs = make([]DirPattern, 0, len(seed.inputs))
 		for j, k := range ix {
 			t.inputs = append(t.inputs, lle[j][k])
+			lastInput := t.inputs[len(t.inputs)-1]
+			matchInts := lastInput.pattern.FindStringSubmatchIndex(lastInput.file)
+			invariant := string(lastInput.pattern.ExpandString(make([]byte, 0), t.invariantTemplate, lastInput.file, matchInts))
+			if t.Invariant == "" {
+				t.Invariant = invariant
+			} else if t.Invariant != invariant {
+				continue transitionAccumulation //We stop building a candidate as soon as we see the invariants don't match
+			}
+			//http://stackoverflow.com/questions/20750843/using-named-matches-from-go-regex
+			match := lastInput.pattern.FindStringSubmatch(lastInput.file)
+			for i, name := range lastInput.pattern.SubexpNames() {
+				if i != 0 {
+					t.NamedMatches[name] = match[i]
+				}
+			}
 		}
 		log.Printf("%v Candidate input", t)
 		//FIXME: Before we append it, we should check the invariants
@@ -268,11 +305,13 @@ func dirLister(seed Transition, toLocker chan<- Transition, quitEmpty bool) {
 		transitions := candidateInputs(t, quitEmpty)
 		for _, t := range transitions {
 			t.custodian = "dirLister"
-			new_outputs := make([]DirPattern, len(t.outputs))
-			copy(new_outputs, t.outputs)
-			t.outputs = new_outputs
+			newOutputs := make([]DirPattern, len(t.outputs))
+			copy(newOutputs, t.outputs)
+			t.outputs = newOutputs
 			for i := range t.outputs {
-				//log.Printf("DBG1, tmplt %+v\n", tmplt)
+				//log.Printf("DBG1, Template %+v\n", t.outputs[i].template)
+				//log.Printf("DBG1.5, Template %+v\n", t.outputs[i].templateString)
+				//log.Printf("DBG1.6, dir %+v\n", t.outputs[i].dir)
 				//log.Printf("DBG2, template data %+v\n", t)
 				var b bytes.Buffer
 				err := t.outputs[i].template.Execute(&b, t)
@@ -280,7 +319,7 @@ func dirLister(seed Transition, toLocker chan<- Transition, quitEmpty bool) {
 					log.Fatal(err)
 				}
 				t.outputs[i].file = b.String()
-				//log.Printf("DBG3, outdp.file %v\n", t.outputs[0].file)
+				//log.Printf("DBG3, outdp.file %v\n", t.outputs[i].file)
 			}
 			//log.Printf("DBG4, t.outputs[0].file %v\n", t.outputs[0].file)
 			log.Printf("%v Output template expanded, sending to locker\n", t)
@@ -526,7 +565,7 @@ func actualWorker(t Transition, id int, outputChannel chan<- int) {
 		s2dchan := goBucketDumper(t, "stdout->disk")
 		//Launch a worker that reads from the command's stderr and logs it
 		var e2dchan chan error
-		if t.logFile != (DirPattern{}) {
+		if !t.logFile.isNull() {
 			var b bytes.Buffer
 			err := t.logFile.template.Execute(&b, t)
 			if err != nil {
@@ -571,9 +610,11 @@ func actualWorker(t Transition, id int, outputChannel chan<- int) {
 		}
 	} else {
 		//Remove the file from the input folder
-		err = os.Remove(t.inputs[0].String())
-		if err != nil {
-			log.Fatal(err)
+		for _, dp := range t.inputs {
+			err = os.Remove(dp.String())
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 	//Release the file locks
@@ -654,15 +695,15 @@ func main() {
 		if pattern == "" {
 			pattern = ".*" //Unspecified pattern defaults to all files
 		}
-		seed.inputs = append(seed.inputs, DirPattern{dir, regexp.MustCompile(pattern), nil, ""})
+		seed.inputs = append(seed.inputs, DirPattern{dir, pattern, *regexp.MustCompile(pattern), "", template.Template{}, ""})
 	}
 	log.Printf("%v Input patterns\n", seed)
-	for _, outtemplate := range arguments["--output"].([]string) {
+	for i, outtemplate := range arguments["--output"].([]string) {
 		dir, tmplt := filepath.Split(outtemplate)
 		if tmplt == "" {
 			tmplt = "{{.Input 0}}" //Unspecified template defaults to same name as first input file
 		}
-		seed.outputs = append(seed.outputs, DirPattern{dir, nil, template.Must(template.New("One of the outputs").Parse(tmplt)), ""})
+		seed.outputs = append(seed.outputs, DirPattern{dir, "", regexp.Regexp{}, tmplt, *template.Must(template.New(fmt.Sprintf("Output file %v", i)).Parse(tmplt)), ""})
 	}
 	log.Printf("%v Output templates\n", seed)
 	if len(arguments["--error"].([]string)) > 0 {
@@ -671,7 +712,7 @@ func main() {
 			if tmplt == "" {
 				tmplt = "{{.Input 0}}" //Unspecified template defaults to same name as first input file
 			}
-			seed.errors = append(seed.errors, DirPattern{dir, nil, template.Must(template.New("One of the errors").Parse(tmplt)), ""})
+			seed.errors = append(seed.errors, DirPattern{dir, "", regexp.Regexp{}, tmplt, *template.Must(template.New("One of the errors").Parse(tmplt)), ""})
 		}
 	}
 	if arguments["--stderr"] != nil {
@@ -679,7 +720,10 @@ func main() {
 		if tmplt == "" {
 			tmplt = "{{.Input 0}}" //Unspecified template defaults to same name as first input file
 		}
-		seed.logFile = DirPattern{dir, nil, template.Must(template.New("The log file").Parse(tmplt)), ""}
+		seed.logFile = DirPattern{dir, "", regexp.Regexp{}, tmplt, *template.Must(template.New("The log file").Parse(tmplt)), ""}
+	}
+	if len(arguments["--input"].([]string)) > 1 {
+		seed.invariantTemplate = arguments["--invariant"].(string)
 	}
 	// cmd_argv, err := shellwords.Parse(arguments["<filter>"].(string))
 	// if err != nil {
