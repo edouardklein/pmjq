@@ -7,6 +7,7 @@ pmjq: pmjq.go
 
 install: pmjq
 	# python3 setup.py install --old-and-unmanageable
+	lnav -i keyvalue.json
 	cp pmjq /usr/local/bin/
 
 docs:
