@@ -63,7 +63,9 @@ mkdir -p ${PLAYGROUND}/input
 mkdir -p ${PLAYGROUND}/output
 mkdir -p ${PLAYGROUND}/error
 
-for file in $(seq 10000)
+NB=10000  # Bug always manifested itself for $NB >= 10000, but keep in mind its appearance is stochastic
+
+for file in $(seq ${NB})
 do
     echo $file > ${PLAYGROUND}/input/$file.txt
 done
@@ -71,7 +73,7 @@ done
 cd "$(dirname "$0")"
 pmjq --quit-when-empty --input=${PLAYGROUND}/input/'.*' ${MD5_CMD} --output=${PLAYGROUND}/output/ &> ${PLAYGROUND}/pmjq.log
 
-ls ${PLAYGROUND}/output/ | wc -l | grep -x 10000  # 10000 files were processed
+ls ${PLAYGROUND}/output/ | wc -l | grep -x ${NB}
 
 if [ -f ${PLAYGROUND}/input/* ]; then
     echo "Not all files in the input dir have been processed"

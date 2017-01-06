@@ -7,20 +7,96 @@ import "C"
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/docopt/docopt-go"
 	"github.com/mattn/go-shellwords"
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
 )
+
+var RandomNonce = fmt.Sprintf("%v", rand.Int())
+
+//lockFileTouch changes the content of the file to avoid it being
+//detected as stale
+func lockFileTouch(name string) error {
+	b, err := ioutil.ReadFile(name)
+	if err != nil {
+		return err
+	}
+	i, err := strconv.Atoi(string(b))
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(name, []byte(fmt.Sprintf("%v", i+1)), 0755)
+}
+
+//lockFileRemoveIfStale will delete a lock file if its
+// contents stay unchanged for 2 minutes
+func lockFileRemoveIfStale(name string) {
+	b, err := ioutil.ReadFile(name)
+	if err != nil {
+		return
+	}
+	time.Sleep(120 * time.Second)
+	bb, err := ioutil.ReadFile(name)
+	if err != nil {
+		return
+	}
+	if bytes.Compare(b, bb) == 0 {
+		log.Println("WARNING: Removing stale lock file " + name)
+		os.Remove(name)
+	}
+}
+
+//lockFileActuallyCreate does the actual file creation dirty work
+//We can not trust all filesystems to respect mutual exclusion or
+//atomicity, that civilized people respect, so we code for
+//the lowest common denominator, using simple primitives :
+//If any write access is performed with this function by another
+//process, then one of the two process should return an error
+func lockFileActuallyCreate(name string) error {
+	fd, err := os.Create(name)
+	if err != nil {
+		return err
+	}
+	fd.WriteString(RandomNonce)
+	fd.Close()
+	b, err := ioutil.ReadFile(name)
+	if err != nil {
+		return err
+	}
+	if string(b) != RandomNonce {
+		return errors.New("File " + name + " was changed from under us")
+	}
+	return nil
+}
+
+//lockFileCreate tries to create the given lock file
+func lockFileCreate(name string) error {
+	//Check existence
+	if _, err := os.Stat(name); os.IsNotExist(err) {
+		//If it does not exist
+		//Try to create it
+		return lockFileActuallyCreate(name)
+	} else if err != nil {
+		log.Fatal(err)
+	}
+	//If it exists
+	//Check for staleness and return an error
+	go lockFileRemoveIfStale(name)
+	return errors.New("Lock file already exists")
+}
 
 // NextIndex sets ix to the lexicographically next value,
 // such that for each i>0, 0 <= ix[i] < lens(i).
@@ -196,7 +272,7 @@ func (t Transition) String() string {
 		release = "locked"
 	}
 
-	return fmt.Sprintf("%06v %-6v %v %03v-%v (%6v)-> %v %v %-11v",
+	return fmt.Sprintf("%06v %-6v %v %03v-%v (%6v)-> %v [%v] %-11v",
 		t.id, release, in, t.workerID, cmd, pid, out, log, t.custodian)
 }
 
@@ -243,8 +319,8 @@ func candidateInputs(seed Transition, quitEmpty bool) []Transition {
 		log.Println("Nothing left to do, exiting")
 		os.Exit(0)
 	}
-	log.Println("DBG: lle")
-	log.Println(lle)
+	//log.Println("DBG: lle")
+	//log.Println(lle)
 	//http://stackoverflow.com/questions/29002724/implement-ruby-style-cartesian-product-in-go
 	transitions := make([]Transition, 0, cardinal)
 	lens := func(i int) int { return len(lle[i]) }
@@ -275,7 +351,7 @@ transitionAccumulation:
 				}
 			}
 		}
-		log.Printf("%v Candidate input", t)
+		log.Printf("%v DEBUG Candidate input", t)
 		//FIXME: Before we append it, we should check the invariants
 		transitions = append(transitions, t)
 	}
@@ -322,7 +398,7 @@ func dirLister(seed Transition, toLocker chan<- Transition, quitEmpty bool) {
 				//log.Printf("DBG3, outdp.file %v\n", t.outputs[i].file)
 			}
 			//log.Printf("DBG4, t.outputs[0].file %v\n", t.outputs[0].file)
-			log.Printf("%v Output template expanded, sending to locker\n", t)
+			log.Printf("%v DEBUG Output template expanded, sending to locker\n", t)
 			//Feed each element to the blocking channel
 			toLocker <- t
 			lastID = t.id
@@ -335,10 +411,10 @@ func dirLister(seed Transition, toLocker chan<- Transition, quitEmpty bool) {
 func lockAbort(t Transition, waitingToken int, lockerSpawnerSynchro chan int) {
 	t.custodian = "lockAbort"
 	for i := 0; i < len(t.inputs)+len(t.outputs); i++ {
-		log.Printf("%v Releasing partial lock %v\n", t, i)
+		log.Printf("%v DEBUG Releasing partial lock %v\n", t, i)
 		t.lockRelease <- 1
 	}
-	log.Printf("%v Giving waiting token %v back to spawner", t, waitingToken)
+	log.Printf("%v DEBUG Giving waiting token %v back to spawner", t, waitingToken)
 	lockerSpawnerSynchro <- waitingToken
 }
 
@@ -359,7 +435,7 @@ func locker(fromDirLister <-chan Transition, lockerSpawnerSynchro chan int,
 		//log.Println("locker: Waiting on dirLister to suggest files to try to lock:")
 		t := <-fromDirLister
 		t.custodian = "locker"
-		log.Printf("%v Received from dirLister", t)
+		log.Printf("%v DEBUG Received from dirLister", t)
 		success := make(chan int)
 		t.lockRelease = make(chan int)
 		nbFiles := len(t.inputs) + len(t.outputs)
@@ -367,16 +443,16 @@ func locker(fromDirLister <-chan Transition, lockerSpawnerSynchro chan int,
 		//files = append(files, t.inputs...)
 		//files = append(files, t.outputs...)
 		//log.Println("locker: Waiting for spawner to be ready to spawn")
-		log.Printf("%v waiting on spawner", t)
+		log.Printf("%v DEBUG waiting on spawner", t)
 		waitingToken := <-lockerSpawnerSynchro //Will unblock once spawner is ready to spawn
-		log.Printf("%v Got waiting token %v from spawner", t, waitingToken)
+		log.Printf("%v DEBUG Got waiting token %v from spawner", t, waitingToken)
 		for i := 0; i < nbFiles; i++ {
 			go lockFile(t, i, success, t.lockRelease)
 		}
 		status := 0
 		for i := 0; i < nbFiles; i++ {
 			status += <-success
-			log.Printf("%v After iteration %v, status is %v", t, i, status)
+			log.Printf("%v DEBUG After iteration %v, status is %v", t, i, status)
 		}
 		if status != 0 { //At least one lock was not acquired
 			lockAbort(t, waitingToken, lockerSpawnerSynchro)
@@ -396,7 +472,7 @@ func locker(fromDirLister <-chan Transition, lockerSpawnerSynchro chan int,
 			continue
 		}
 		//All files exist
-		log.Printf("%v Sending locked files to spawner", t)
+		log.Printf("%v DEBUG Sending locked files to spawner", t)
 		//logTransition(t)
 		toSpawner <- t
 	}
@@ -416,33 +492,33 @@ func lockFile(t Transition, fileno int, success chan<- int, release <-chan int) 
 		fname = fmt.Sprintf("%v", t.outputs[fileno-len(t.inputs)])
 	}
 	fname += ".lock"
-	log.Printf("%v Acquiring lock on %v", t, fname)
-	errInt := int(C.lockfile_create(C.CString(fname), 0, 0))
-	if errInt != 0 {
-		log.Printf("%v Could not get a lock on %v error nb %v", t, fname, errInt)
-		success <- errInt
+	log.Printf("%v DEBUG Acquiring lock on %v", t, fname)
+	err := lockFileCreate(fname)
+	if err != nil {
+		log.Printf("%v WARNING Could not get a lock on %v error %v", t, fname, err)
+		success <- 1
 		i := <-release
-		log.Printf("%v %v exiting status %v", t, fname, i)
+		log.Printf("%v DEBUG %v exiting status %v", t, fname, i)
 		return
 	}
 	success <- 0
 	defer func() {
-		errInt = int(C.lockfile_remove(C.CString(fname)))
-		log.Printf("%v Deferred lock release on %v: %v", t, fname, errInt)
+		err = os.Remove(fname)
+		log.Printf("%v DEBUG Deferred lock release on %v: %v", t, fname, err)
 	}()
 	timeChan := make(chan int)
 	go func() { timeChan <- 0 }()
 	for true {
 		select {
 		case _ = <-timeChan:
-			log.Printf("%v Refreshing lock on %v ", t, fname)
-			C.lockfile_touch(C.CString(fname))
+			log.Printf("%v DEBUG Refreshing lock on %v ", t, fname)
+			lockFileTouch(fname)
 			go func() {
 				time.Sleep(60 * time.Second)
 				timeChan <- 0
 			}()
 		case i := <-release:
-			log.Printf("%v %v exiting status %v", t, fname, i)
+			log.Printf("%v DEBUG %v exiting status %v", t, fname, i)
 			return
 		}
 	}
@@ -454,7 +530,7 @@ func goBucketDumper(t Transition, srcdst string) chan error {
 	c := make(chan error)
 	var src io.ReadCloser
 	var dst io.WriteCloser
-	t.custodian += " " + srcdst
+	t.custodian += srcdst
 	if srcdst == "disk->stdin" {
 		src = t.inputFd
 		dst = t.stdin
@@ -484,11 +560,11 @@ func goBucketDumper(t Transition, srcdst string) chan error {
 			}
 			data = data[:n]
 			if srcdst == "disk->stdin" {
-				log.Printf("%v --[%04v]", t, n)
+				log.Printf("%v DEBUG --[%04v]", t, n)
 			} else if srcdst == "stdout->disk" {
-				log.Printf("%v [%04v]-->", t, n)
+				log.Printf("%v DEBUG [%04v]-->", t, n)
 			} else if srcdst == "stderr->disk" {
-				log.Printf("%v [%04v]-|", t, n)
+				log.Printf("%v DEBUG [%04v]-|", t, n)
 			}
 			start := 0
 			for start < n {
@@ -511,7 +587,7 @@ func goBucketDumper(t Transition, srcdst string) chan error {
 func actualWorker(t Transition, id int, outputChannel chan<- int) {
 	t.custodian = fmt.Sprintf("worker%v", id)
 	t.workerID = id
-	log.Printf("%v Starting\n", t)
+	log.Printf("%v DEBUG Starting\n", t)
 	//Expand the command
 	var b bytes.Buffer
 	err := t.cmdTemplate.Execute(&b, t)
@@ -544,7 +620,7 @@ func actualWorker(t Transition, id int, outputChannel chan<- int) {
 	t.stdin = stdin
 	t.stdout = stdout
 	t.stderr = stderr
-	log.Printf("%v Command started \n", t)
+	log.Printf("%v DEBUG Command started \n", t)
 	//Launch a worker that reads from disk and writes to the stdin of the command
 	//Wrapping it in an anonymous func so that Close() is called as soon
 	//as we are finished with the FDs
@@ -580,7 +656,7 @@ func actualWorker(t Transition, id int, outputChannel chan<- int) {
 			e2dchan = goBucketDumper(t, "stderr->disk")
 		}
 		//Wait for it to finish
-		log.Printf("%v Waiting for job to finish", t)
+		log.Printf("%v DEBUG Waiting for job to finish", t)
 		<-d2schan
 		<-s2dchan
 		if e2dchan != nil {
@@ -640,19 +716,19 @@ func spawner(seed Transition,
 	t := seed
 	t.custodian = "spawner"
 	for true {
-		log.Printf("%v Waiting for an available worker", t)
+		log.Printf("%v DEBUG Waiting for an available worker", t)
 		i = <-availableWorkers
-		log.Printf("%v worker %v waiting on locker\n", t, i)
+		log.Printf("%v DEBUG worker %v waiting on locker\n", t, i)
 		lockerSpawnerSynchro <- i //Signal locker that we are ready
 		//to work by sending it a waiting token
 		select {
 		case i = <-lockerSpawnerSynchro: //Locker gives us our token back: it could
 			//not get the locks
-			log.Printf("%v Locker is sending token %v back to the pool\n", t, i)
+			log.Printf("%v DEBUG received token %v, putting it back to the pool\n", t, i)
 			go func(j int) { availableWorkers <- j }(i)
 		case t := <-fromLocker:
 			t.custodian = "spawner"
-			log.Printf("%v Assigning to worker %v\n", t, i)
+			log.Printf("%v DEBUG Assigning to worker %v\n", t, i)
 			go actualWorker(t, i, availableWorkers) //Launch the actual worker
 		}
 	}
@@ -680,8 +756,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println("pmjq started")
-	log.Println(arguments)
+	//log.Println("pmjq started")
+	//log.Println(arguments)
 	seed := Transition{
 		id:          0,
 		custodian:   "Seed",
@@ -689,7 +765,7 @@ func main() {
 		outputs:     make([]DirPattern, 0, len(arguments["--output"].([]string))),
 		cmdTemplate: template.Must(template.New("Command").Parse(arguments["<cmdtemplate>"].(string))),
 	}
-	log.Printf("%v Initial seed\n", seed)
+	//log.Printf("%v DEBUG Initial seed\n", seed)
 	for _, inpattern := range arguments["--input"].([]string) {
 		dir, pattern := filepath.Split(inpattern)
 		if pattern == "" {
@@ -697,7 +773,7 @@ func main() {
 		}
 		seed.inputs = append(seed.inputs, DirPattern{dir, pattern, *regexp.MustCompile(pattern), "", template.Template{}, ""})
 	}
-	log.Printf("%v Input patterns\n", seed)
+	//log.Printf("%v DEBUG Input patterns\n", seed)
 	for i, outtemplate := range arguments["--output"].([]string) {
 		dir, tmplt := filepath.Split(outtemplate)
 		if tmplt == "" {
@@ -705,7 +781,7 @@ func main() {
 		}
 		seed.outputs = append(seed.outputs, DirPattern{dir, "", regexp.Regexp{}, tmplt, *template.Must(template.New(fmt.Sprintf("Output file %v", i)).Parse(tmplt)), ""})
 	}
-	log.Printf("%v Output templates\n", seed)
+	log.Printf("%v DEBUG Output templates\n", seed)
 	if len(arguments["--error"].([]string)) > 0 {
 		for _, errtemplate := range arguments["--error"].([]string) {
 			dir, tmplt := filepath.Split(errtemplate)

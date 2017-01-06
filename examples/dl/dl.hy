@@ -5,19 +5,18 @@
 (def *ssh-user* "edouard")
 (def *ssh-host* "172.20.11.242")
 (def *usual-dirs* ["input" "output" "error" "log"])
-(def *spool-dir* "/var/spool/dl/")
+(def *spool-dir* "/var/spool/dl")
 (def *mount-template* "sshfs {user}@{host}:{remote_dir} {local_dir}")
 (def *transition*
   '(transition
     :id "DL_pool"
-    :error "/var/spool/dl/error"
-    :log "/var/spool/dl/log"
-    :inputs ["/var/spool/dl/input"]
-    :outputs ["/var/spool/dl/output"]
-    :cmd "sh -c 'read url && curl \"$url\"'"
+    :error "/var/spool/dl/error/"
+    :stderr "/var/spool/dl/log/"
+    :stdin "/var/spool/dl/input/"
+    :stdout "/var/spool/dl/output/"
+    :cmd "\"sh -c 'read url && curl \\\"\$url\\\"'\""
     :quit-empty True
-    :pmjq-log "/var/spool/dl/$(hostname)_pmjq.log"
-    :lock ["/var/spool/dl/$(hostname.lock)"]))
+    :log "/var/spool/dl/pmjq.log"))
 
 (print "#!/usr/bin/env bash
 set -e
@@ -32,7 +31,7 @@ set -o pipefail
 (print (.format *mount-template*
                 :user *ssh-user*
                 :host *ssh-host*
-                :remote-dir *spool-dir*
+                :remote-dir "/home/shared/dl/"
                 :local-dir *spool-dir*))
 
 (print "fi")
