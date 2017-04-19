@@ -103,3 +103,8 @@ if [ ! -f ${PLAYGROUND}/log/err.log ]; then
     echo "Log file log/err.log does not exist"
     exit 1
 fi
+
+if ls ${PLAYGROUND}/*/*.lock 1> /dev/null 2>&1; then
+    echo "At least one lock file remains (All should be deleted)."
+    exit 1
+fi

@@ -25,6 +25,7 @@ import (
 	"time"
 )
 
+//RandomNonce is the (hopefully) unique indentifier of a particular instance of pmjq
 var RandomNonce = fmt.Sprintf("%v", rand.Int())
 
 //lockFileTouch changes the content of the file to avoid it being
