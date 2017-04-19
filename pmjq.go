@@ -695,8 +695,10 @@ func actualWorker(t Transition, id int, outputChannel chan<- int) {
 		}
 	}
 	//Release the file locks
-	t.lockRelease <- 0
-	t.lockRelease <- 0
+	for i := 0; i < len(t.inputs)+len(t.outputs); i++ {
+		log.Printf("%v DEBUG Releasing lock %v\n", t, i)
+		t.lockRelease <- 0
+	}
 	outputChannel <- id
 }
 
