@@ -93,13 +93,54 @@ of using the user input given to ``pmjq_interactive`` is an important feature
 as one can be sure that what we see is what is going to be executed.
 
 '''
-from .dsl import normalize
+from .dsl import normalize, pmjq_command
 import os
+import daemux  # FIXME: add daemux to the requirements in setup.py
+import shlex
 
 
 def create_endpoints(transitions):
+    """Create all directories that the given transitions need."""
     for t in transitions:
         t = normalize(t)
         for endpoint in sum([t[x] for x in ['inputs', 'outputs', 'errors']
-                             if x in t], []):
+                             if x in t], []) + [t['stderr']]:
             os.makedirs(endpoint, exist_ok=True)
+
+
+COMMAND_TEMPLATES = {
+    "log": "lnav {log}",
+    "directories": "for dir in {dirs}; do echo $dir; ls -1 $dir | wc -l; done",
+    "stderr": "tail $(ls -1t {stderr} | head -1); ls {stderr}",
+    "htop": "htop",
+}
+
+
+def daemux_start(transitions, session="pmjq", shell='sh'):
+    """Instantiate the transitions, one in its own tmux window."""
+    for t in transitions:
+        t = normalize(t)
+        commands = []
+        # Template "directories" deals with watch-able templates
+        # that use a list as input
+        for dirs_key in [x for x in ["inputs", "outputs", "errors"]
+                         if x in t]:
+            commands.append("watch -n1 "+shlex.quote(
+                COMMAND_TEMPLATES['directories'].format(
+                    dirs=' '.join(t[dirs_key]))))
+        # Template "stderr" deals with the log files
+        if "stderr" in t:
+            commands.append("watch -n1 "+shlex.quote(
+                COMMAND_TEMPLATES['stderr'].format(
+                    stderr=t['stderr'])))
+        # The command
+        if shell == "sh":
+            commands.append(pmjq_command(t))
+        elif shell == 'fish':
+            commands.append(pmjq_command(t, redirect='^'))
+        # The other templates can be used as is
+        for k in [k for k in COMMAND_TEMPLATES
+                  if k not in ['directories', 'stderr', 'cmd']]:
+            commands.append(COMMAND_TEMPLATES[k].format(**t))
+        for cmd in commands:
+            daemux.start(cmd, session=session, window=t['id'], layout='tiled')
