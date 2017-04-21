@@ -105,13 +105,13 @@ def create_endpoints(transitions):
         t = normalize(t)
         for endpoint in sum([t[x] for x in ['inputs', 'outputs', 'errors']
                              if x in t], []) + [t['stderr']]:
-            os.makedirs(endpoint, exist_ok=True)
+            os.makedirs(os.path.dirname(endpoint), exist_ok=True)
 
 
 COMMAND_TEMPLATES = {
     "log": "lnav {log}",
     "directories": "for dir in {dirs}; do echo $dir; ls -1 $dir | wc -l; done",
-    "stderr": "tail $(ls -1t {stderr} | head -1); ls {stderr}",
+    "stderr": "tail {stderr}/$(ls -1t {stderr} | head -1); ls {stderr}",
     "htop": "htop",
 }
 
@@ -127,12 +127,14 @@ def daemux_start(transitions, session="pmjq", shell='sh'):
                          if x in t]:
             commands.append("watch -n1 "+shlex.quote(
                 COMMAND_TEMPLATES['directories'].format(
-                    dirs=' '.join(t[dirs_key]))))
+                    dirs=' '.join(
+                        map(lambda d: shlex.quote(os.path.dirname(d)),
+                            t[dirs_key])))))
         # Template "stderr" deals with the log files
         if "stderr" in t:
             commands.append("watch -n1 "+shlex.quote(
                 COMMAND_TEMPLATES['stderr'].format(
-                    stderr=t['stderr'])))
+                    stderr=shlex.quote(os.path.dirname(t['stderr'])))))
         # The command
         if shell == "sh":
             commands.append(pmjq_command(t))

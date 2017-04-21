@@ -23,17 +23,17 @@ def pmjq_command(transition, redirect="&>"):
     answer = "pmjq "
     if "quit_empty" in transition and transition["quit_empty"]:
         answer += "--quit-when-empty "
-    answer += " ".join(map(lambda pattern: "--input="+pattern,
+    answer += " ".join(map(lambda pattern: "--input="+shlex.quote(pattern),
                            transition["inputs"])) + " "
     if "invariant" in transition:
         answer += "--invariant="+transition["invariant"]+" "
     answer += shlex.quote(transition["cmd"])+" "
-    answer += " ".join(map(lambda template: "--output="+template,
+    answer += " ".join(map(lambda template: "--output="+shlex.quote(template),
                            transition["outputs"]))+" "
     if "stderr" in transition:
         answer += "--stderr="+transition["stderr"]+" "
     if "errors" in transition:
-        answer += " ".join(map(lambda template: "--error="+template,
+        answer += " ".join(map(lambda tmplt: "--error="+shlex.quote(tmplt),
                                transition["errors"]))+" "
     if "log" in transition:
         answer += redirect + " " + transition["log"]
