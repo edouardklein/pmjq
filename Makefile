@@ -1,3 +1,6 @@
+# In fish
+# set -x GOPATH ~/src/go
+# set -x PATH $PATH /usr/local/go/bin $GOPATH/bin
 DOC_STAGE_DIR=~/Bureau/pmjq_docs/
 
 all: install test

@@ -627,19 +627,37 @@ func actualWorker(t Transition, id int, outputChannel chan<- int) {
 	//as we are finished with the FDs
 	// http://grokbase.com/t/gg/golang-nuts/134883hv3h/go-nuts-io-closer-and-closing-previously-closed-object
 	if err := func() error {
-		t.inputFd, err = os.Open(t.inputs[0].String())
-		if err != nil {
-			log.Fatal(err)
+		d2schan := make(chan error)
+		if len(t.inputs) == 1 {
+			t.inputFd, err = os.Open(t.inputs[0].String())
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer t.inputFd.Close()
+			d2schan = goBucketDumper(t, "disk->stdin")
+		} else {
+			// With multiple inputs, we don't write to the command's stdin
+			go func() {
+				t.stdin.Close() //Explicitely prevent input on stdin
+				d2schan <- nil
+			}()
 		}
-		defer t.inputFd.Close()
-		d2schan := goBucketDumper(t, "disk->stdin")
 		//Launch a worker that reads from the command and writes to disk
-		t.outputFd, err = os.Create(t.outputs[0].String())
-		if err != nil {
-			log.Fatal(err)
+		s2dchan := make(chan error)
+		if len(t.outputs) == 1 {
+			t.outputFd, err = os.Create(t.outputs[0].String())
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer t.outputFd.Close()
+			s2dchan = goBucketDumper(t, "stdout->disk")
+		} else {
+			// With multiple outputs, we don't write the command's stdout
+			// (FIXME: This output is lost)
+			go func() {
+				s2dchan <- nil
+			}()
 		}
-		defer t.outputFd.Close()
-		s2dchan := goBucketDumper(t, "stdout->disk")
 		//Launch a worker that reads from the command's stderr and logs it
 		var e2dchan chan error
 		if !t.logFile.isNull() {

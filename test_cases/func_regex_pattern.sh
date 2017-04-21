@@ -7,13 +7,18 @@ set -o pipefail
 PLAYGROUND=/tmp
 ! read -d '' EXAMPLE_COMMAND <<"EOF"
 python3 -c "import sys
+if sys.stdin.read() != '':
+    sys.stderr.write('Something was written on stdin, this is not supposed to happen.')
+    exit(1)
 sys.stderr.write('Hello stderr')
 data1 = open(sys.argv[1]).read()
 data2 = open(sys.argv[2]).read()
 if data1 != data2:
     sys.exit(1)
 open(sys.argv[3], 'w').write('ok')
-open(sys.argv[4], 'w').write('ok')"
+open(sys.argv[4], 'w').write('ok')
+sys.stdout.write('This output will be lost if not redirected to stderr.')
+"
 EOF
 
 
@@ -75,6 +80,14 @@ do
     fi
     if [ ! -f ${PLAYGROUND}/log/${id}.log ]; then
         echo "Output file log/${id}.log does not exist"
+        exit 1
+    fi
+    if ! grep -E '^ok$' ${PLAYGROUND}/outputA/${id}_Foo_OK.txt; then
+        echo "Output file outputA/${id}_Foo_OK.txt does not contain what our program wrote to it."
+        exit 1
+    fi
+    if ! grep -E '^ok$' ${PLAYGROUND}/outputB/${id}.txt; then
+        echo "Output file outputA/${id}_Foo_OK.txt does not contain what our program wrote to it."
         exit 1
     fi
 done
