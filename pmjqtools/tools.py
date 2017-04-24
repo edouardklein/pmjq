@@ -146,3 +146,53 @@ def daemux_start(transitions, session="pmjq", shell='sh'):
             commands.append(COMMAND_TEMPLATES[k].format(**t))
         for cmd in commands:
             daemux.start(cmd, session=session, window=t['id'], layout='tiled')
+
+
+def get_str(*args):
+    return ("    {{"
+            "\"{}\" [shape = \"{}\", color = \"{}\"]"
+            "}} -> {{"
+            "\"{}\" [shape = \"{}\", color = \"{}\"]"
+            "}}"
+            " [arrowhead = \"{}\", style = \"{}\"];\n"
+            ).format(*args)
+
+
+def trans2dot(transition):
+    dot = ""
+    tr = transition.get("id")
+    for i in transition.get("inputs", []):
+        name = os.path.dirname(i)
+        dot += get_str(name, "oval", "blue",
+                       tr, "box", "green",
+                       "normal", "")
+    for o in transition.get("outputs", []):
+        name = os.path.dirname(o)
+        dot += get_str(tr, "box", "green",
+                       name, "oval", "blue",
+                       "normal", "")
+    for e in transition.get("errors", []):
+        name = os.path.dirname(e)
+        dot += get_str(tr, "box", "green",
+                       name, "hexagon", "red",
+                       "none", "dotted")
+    for s in transition.get("side_effects", []):
+        dot += get_str(tr, "box", "green",
+                       s, "diamond", "purple",
+                       "none", "")
+        pass
+    return dot
+
+
+def transitions2dot(transitions):
+    dot = "digraph transitions {\n"
+    # dot += "    rankdir = LR;\n" 
+    dot += "    splines=ortho;\n"
+    dot += "    node[penwidth=2.0];\n"
+    i = 0
+    for t in transitions:
+        dot += trans2dot(normalize(t))
+        i += 1
+    dot += "}"
+    return dot
+
