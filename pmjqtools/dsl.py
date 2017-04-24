@@ -29,7 +29,7 @@ def pmjq_command(transition, redirect="&>"):
     answer += " ".join(map(lambda pattern: "--input="+shlex.quote(pattern),
                            transition["inputs"])) + " "
     if "invariant" in transition:
-        answer += "--invariant="+transition["invariant"]+" "
+        answer += "--invariant="+shlex.quote(transition["invariant"])+" "
     answer += shlex.quote(transition["cmd"])+" "
     answer += " ".join(map(lambda template: "--output="+shlex.quote(template),
                            transition["outputs"]))+" "
