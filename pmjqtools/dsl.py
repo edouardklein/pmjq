@@ -9,11 +9,14 @@ def normalize(transition):
     assert not (("error" in transition) and ("errors" in transition)), \
         "Use either error or errors or neither but not both"  # NAND
     if "stdin" in transition:
-        transition["inputs"] = transition["stdin"]
+        transition["inputs"] = [transition["stdin"]]
+        del transition['stdin']
     if "stdout" in transition:
-        transition["outputs"] = transition["stdout"]
+        transition["outputs"] = [transition["stdout"]]
+        del transition['stdout']
     if "error" in transition:
-        transition["errors"] = transition["error"]
+        transition["errors"] = [transition["error"]]
+        del transition['error']
     return transition
 
 
