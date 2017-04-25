@@ -327,7 +327,7 @@ func candidateInputs(seed Transition, quitEmpty bool) chan Transition {
 	go func() {
 		lens := func(i int) int { return len(lle[i]) }
 		// Quitting early if any of the set is empty
-		for i := 0; i <= len(lle); i++ {
+		for i := 0; i < len(lle); i++ {
 			if lens(i) == 0 {
 				close(transitions)
 				return
