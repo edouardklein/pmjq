@@ -326,6 +326,13 @@ func candidateInputs(seed Transition, quitEmpty bool) chan Transition {
 	transitions := make(chan Transition)
 	go func() {
 		lens := func(i int) int { return len(lle[i]) }
+		// Quitting early if any of the set is empty
+		for i := 0; i <= len(lle); i++ {
+			if lens(i) == 0 {
+				close(transitions)
+				return
+			}
+		}
 		lastID := seed.id
 	transitionAccumulation:
 		for ix := make([]int, len(lle)); ix[0] < lens(0); NextIndex(ix, lens) {
