@@ -290,8 +290,8 @@ func (t Transition) Input(i int) string {
 //candidateInputs returns a slice of all consistent input combinations
 //These are the combinations where all files match their patterns, and
 //where the invariant is the same among the files
-func candidateInputs(seed Transition, quitEmpty bool) []Transition {
-	lle := make([][]DirPattern, len(seed.inputs)) //List of list of entries, from which we will draw a cardinal product
+func candidateInputs(seed Transition, quitEmpty bool) chan Transition {
+	lle := make([][]DirPattern, len(seed.inputs)) //List of list of entries, from which we will draw a cartesian product
 	cardinal := 0
 	for i, dp := range seed.inputs {
 		entries, err := ioutil.ReadDir(dp.dir)
@@ -323,39 +323,42 @@ func candidateInputs(seed Transition, quitEmpty bool) []Transition {
 	//log.Println("DBG: lle")
 	//log.Println(lle)
 	//http://stackoverflow.com/questions/29002724/implement-ruby-style-cartesian-product-in-go
-	transitions := make([]Transition, 0, cardinal)
-	lens := func(i int) int { return len(lle[i]) }
-	lastID := seed.id
-transitionAccumulation:
-	for ix := make([]int, len(lle)); ix[0] < lens(0); NextIndex(ix, lens) {
-		t := seed
-		t.id = lastID + 1
-		lastID++
-		t.custodian = "candidate"
-		t.NamedMatches = make(map[string]string)
-		t.inputs = make([]DirPattern, 0, len(seed.inputs))
-		for j, k := range ix {
-			t.inputs = append(t.inputs, lle[j][k])
-			lastInput := t.inputs[len(t.inputs)-1]
-			matchInts := lastInput.pattern.FindStringSubmatchIndex(lastInput.file)
-			invariant := string(lastInput.pattern.ExpandString(make([]byte, 0), t.invariantTemplate, lastInput.file, matchInts))
-			if t.Invariant == "" {
-				t.Invariant = invariant
-			} else if t.Invariant != invariant {
-				continue transitionAccumulation //We stop building a candidate as soon as we see the invariants don't match
-			}
-			//http://stackoverflow.com/questions/20750843/using-named-matches-from-go-regex
-			match := lastInput.pattern.FindStringSubmatch(lastInput.file)
-			for i, name := range lastInput.pattern.SubexpNames() {
-				if i != 0 {
-					t.NamedMatches[name] = match[i]
+	transitions := make(chan Transition)
+	go func() {
+		lens := func(i int) int { return len(lle[i]) }
+		lastID := seed.id
+	transitionAccumulation:
+		for ix := make([]int, len(lle)); ix[0] < lens(0); NextIndex(ix, lens) {
+			t := seed
+			t.id = lastID + 1
+			lastID++
+			t.custodian = "candidate"
+			t.NamedMatches = make(map[string]string)
+			t.inputs = make([]DirPattern, 0, len(seed.inputs))
+			for j, k := range ix {
+				t.inputs = append(t.inputs, lle[j][k])
+				lastInput := t.inputs[len(t.inputs)-1]
+				matchInts := lastInput.pattern.FindStringSubmatchIndex(lastInput.file)
+				invariant := string(lastInput.pattern.ExpandString(make([]byte, 0), t.invariantTemplate, lastInput.file, matchInts))
+				if t.Invariant == "" {
+					t.Invariant = invariant
+				} else if t.Invariant != invariant {
+					continue transitionAccumulation //We stop building a candidate as soon as we see the invariants don't match
+				}
+				//http://stackoverflow.com/questions/20750843/using-named-matches-from-go-regex
+				match := lastInput.pattern.FindStringSubmatch(lastInput.file)
+				for i, name := range lastInput.pattern.SubexpNames() {
+					if i != 0 {
+						t.NamedMatches[name] = match[i]
+					}
 				}
 			}
+			log.Printf("%v DEBUG Candidate input", t)
+			//FIXME: Before we append it, we should check the invariants
+			transitions <- t
 		}
-		log.Printf("%v DEBUG Candidate input", t)
-		//FIXME: Before we append it, we should check the invariants
-		transitions = append(transitions, t)
-	}
+		close(transitions)
+	}()
 	return transitions
 }
 
@@ -380,7 +383,7 @@ func dirLister(seed Transition, toLocker chan<- Transition, quitEmpty bool) {
 			timeChan <- 0
 		}()
 		transitions := candidateInputs(t, quitEmpty)
-		for _, t := range transitions {
+		for t := range transitions {
 			t.custodian = "dirLister"
 			newOutputs := make([]DirPattern, len(t.outputs))
 			copy(newOutputs, t.outputs)
@@ -571,6 +574,7 @@ func goBucketDumper(t Transition, srcdst string) chan error {
 			for start < n {
 				n2, err := dst.Write(data)
 				if err != nil {
+					log.Printf("%v In bucketdumper, start=%v, n=%v, n2=%v.", t, start, n, n2)
 					log.Fatal(err)
 					c <- err
 					break

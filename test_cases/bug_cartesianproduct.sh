@@ -28,7 +28,8 @@ split -b 1 -a 6 ${PLAYGROUND}/masterfile ${PLAYGROUND}/input1/
 rm ${PLAYGROUND}/masterfile
 
 cd "$(dirname "$0")"
-pmjq \
+set +e  # Next command WILL fail (or something is wrong)
+timeout 5 pmjq \
     --quit-when-empty\
     --input=${PLAYGROUND}/input0/\
     --input=${PLAYGROUND}/input1/\
@@ -39,11 +40,11 @@ pmjq \
     --error=${PLAYGROUND}/error0/'{{.Input 0}}'\
     --error=${PLAYGROUND}/error1/'{{.Input 1}}' &> ${PLAYGROUND}/pmjq.log
 
-
-ls ${PLAYGROUND}/output/ | wc -l | grep -x 10000
-
-if [ -f ${PLAYGROUND}/input/* ]; then
-    echo "Not all files in the input dir have been processed"
+if [ $? -eq 124 ]; then
+    echo "Process was killed by the timeout, that's OK."
+else
+    echo "The pmjq process died from another error, check the logs (${PLAYGROUND}/pmjq.log) to know why."
     exit 1
 fi
+
 

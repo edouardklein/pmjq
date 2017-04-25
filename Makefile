@@ -38,6 +38,7 @@ test_pmjq: pmjq
 	test_cases/func_regex_pattern.sh
 	test_cases/bug_sshfs.sh
 	test_cases/bug_spacename.sh
+	test_cases/bug_cartesianproduct.sh
 
 test_pmjqtools:
 	test_cases/func_command_gen.sh
