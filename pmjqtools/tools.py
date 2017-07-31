@@ -149,50 +149,87 @@ def daemux_start(transitions, session="pmjq", shell='sh'):
 
 
 def get_str(*args):
+    """Create dot edges and nodes in dot format.
+    Args are, in order :
+    node_name, shape, color, label,
+    node2_name, shape2, color2, label2,
+    arrowhead, arrowstyle, arrowcolor, arrowweight.
+
+    Used to fill tran2dot data.
+    """
+    args = [args[i] if i < len(args) else "" for i in range(12)]
     return ("    {{"
-            "\"{}\" [shape = \"{}\", color = \"{}\"]"
+            "\"{}\" [shape = \"{}\", color = \"{}\", label = \"{}\"]"
             "}} -> {{"
-            "\"{}\" [shape = \"{}\", color = \"{}\"]"
+            "\"{}\" [shape = \"{}\", color = \"{}\", label = \"{}\"]"
             "}}"
-            " [arrowhead = \"{}\", style = \"{}\"];\n"
+            " [arrowhead = \"{}\", style = \"{}\", color = \"{}\","
+            " weight = {}];\n"
             ).format(*args)
 
 
-def trans2dot(transition):
+def tran2dot(transition, logs=False):
+    """Transform a pmjq transition into a dot string.
+
+    :param transition: The transition to convert
+    :param logs: Include the 'logs' field
+    :return: The dot string, and the error list (for further processing)
+    """
     dot = ""
     tr = transition.get("id")
+    errors = []
     for i in transition.get("inputs", []):
         name = os.path.dirname(i)
-        dot += get_str(name, "oval", "blue",
-                       tr, "box", "green",
-                       "normal", "")
+        label = "dir_" + name
+        dot += get_str(label, "oval", "blue", name,
+                       tr, "box", "green", tr,
+                       "normal", "", "blue", "10")
     for o in transition.get("outputs", []):
         name = os.path.dirname(o)
-        dot += get_str(tr, "box", "green",
-                       name, "oval", "blue",
-                       "normal", "")
+        label = "dir_" + name
+        dot += get_str(tr, "box", "green", tr,
+                       label, "oval", "blue", name,
+                       "normal", "", "blue", "10")
     for e in transition.get("errors", []):
         name = os.path.dirname(e)
-        dot += get_str(tr, "box", "green",
-                       name, "hexagon", "red",
-                       "none", "dotted")
+        label = "dir_" + name
+        dot += get_str(tr, "box", "green", tr,
+                       label, "hexagon", "red", name,
+                       "none", "dotted", "red", "1")
+        errors.append("\"{}\"".format(label))
     for s in transition.get("side_effects", []):
-        dot += get_str(tr, "box", "green",
-                       s, "diamond", "purple",
-                       "none", "")
-        pass
-    return dot
+        dot += get_str(tr, "box", "green", tr,
+                       "se_"+s, "diamond", "purple", s,
+                       "none", "", "purple", "2")
+    l = transition.get("stderr", "")
+    if l and logs:
+        l = os.path.dirname(l)
+        label = "dir_" + l
+        dot += get_str(tr, "box", "green", tr,
+                       label, "octagon", "darkorange", l,
+                       "none", "", "darkorange", "2")
+    return dot, errors
 
 
-def transitions2dot(transitions):
+def process_transitions(transitions, group=True):
+    """Convert a pmjq transition dict into a dot-readable string.
+
+    :param transitions: The dict containing transitions
+    :param group: Group errors in a cluster
+    :return: The dot string
+    """
     dot = "digraph transitions {\n"
-    # dot += "    rankdir = LR;\n" 
+    dot += "    rankdir = TB;\n"
     dot += "    splines=ortho;\n"
     dot += "    node[penwidth=2.0];\n"
-    i = 0
+    errors = []
     for t in transitions:
-        dot += trans2dot(normalize(t))
-        i += 1
+        d, err = tran2dot(normalize(t))
+        dot += d
+        errors += err
+    if group and len(errors) > 0:  # Dirty hack to gather errors
+        dot += "subgraph cluster_errors {{\n"\
+               "color=none\nedge[style=invis]\n{}\n"\
+               "}}\n".format(" -> ".join(errors))
     dot += "}"
     return dot
-
