@@ -97,6 +97,8 @@ from .dsl import normalize, pmjq_command
 import os
 import daemux  # FIXME: add daemux to the requirements in setup.py
 import shlex
+from collections import defaultdict
+from string import Formatter
 
 
 def create_endpoints(transitions):
@@ -148,51 +150,85 @@ def daemux_start(transitions, session="pmjq", shell='sh'):
             daemux.start(cmd, session=session, window=t['id'], layout='tiled')
 
 
-def get_str(*args):
-    return ("    {{"
-            "\"{}\" [shape = \"{}\", color = \"{}\"]"
-            "}} -> {{"
-            "\"{}\" [shape = \"{}\", color = \"{}\"]"
-            "}}"
-            " [arrowhead = \"{}\", style = \"{}\"];\n"
-            ).format(*args)
+def dot_nodes_and_edge(**kwargs):
+    """Return the dot code for two nodes and an edge"""
+    print("DBG", defaultdict(lambda: "", **kwargs))
+    return Formatter().vformat('''{{ "{node1}" [shape="{shape1}", color="{color1}", label="{label1}"]}} ->
+    {{"{node2}" [shape="{shape2}", color="{color2}", label="{label2}"]}}
+    [arrowhead="{ahead}", style="{astyle}",color="{acolor}",weight={aweight}];
+    ''', (), defaultdict(lambda: "", **kwargs))
 
 
-def trans2dot(transition):
+def trans2dot(transition, logs=False):
+    """Transform a pmjq transition into a dot string.
+
+    :param transition: The transition to convert
+    :param logs: Include the 'logs' field
+    :return: The dot string, and the error list (for further processing)
+    """
     dot = ""
     tr = transition.get("id")
+    errors = []
     for i in transition.get("inputs", []):
         name = os.path.dirname(i)
-        dot += get_str(name, "oval", "blue",
-                       tr, "box", "green",
-                       "normal", "")
+        dot += dot_nodes_and_edge(node1='dir_'+name, shape1="oval",
+                                  color1="blue", label1=name,
+                                  node2=tr, shape2="box",
+                                  color2="green", label2=tr,
+                                  ahead="normal", acolor="blue", aweight="10")
     for o in transition.get("outputs", []):
         name = os.path.dirname(o)
-        dot += get_str(tr, "box", "green",
-                       name, "oval", "blue",
-                       "normal", "")
+        dot += dot_nodes_and_edge(node1=tr, shape1="box",
+                                  color1="green", label1=tr,
+                                  node2='dir_'+name, shape2="oval",
+                                  color2="blue", label2=name,
+                                  ahead="normal", acolor="blue", aweight="10")
     for e in transition.get("errors", []):
         name = os.path.dirname(e)
-        dot += get_str(tr, "box", "green",
-                       name, "hexagon", "red",
-                       "none", "dotted")
+        dot += dot_nodes_and_edge(node1=tr, shape1="box",
+                                  color1="green", label1=tr,
+                                  node2='dir_'+name, shape2="hexagon",
+                                  color2="red", label2=name,
+                                  ahead="none", astyle="dotted", acolor="red",
+                                  aweight="1")
+        errors.append('"dir_{}"'.format(name))
     for s in transition.get("side_effects", []):
-        dot += get_str(tr, "box", "green",
-                       s, "diamond", "purple",
-                       "none", "")
-        pass
-    return dot
+        dot += dot_nodes_and_edge(node1=tr, shape1="box",
+                                  color1="green", label1=tr,
+                                  node2='se_'+s, shape2="diamond",
+                                  color2="purple", label2=s,
+                                  ahead="none", acolor="purple", aweight="1")
+    l = transition.get("stderr", "")
+    if l and logs:
+        l = os.path.dirname(l)
+        dot += dot_nodes_and_edge(node1=tr, shape1="box",
+                                  color1="green", label1=tr,
+                                  node2='dir_'+l, shape2="octagon",
+                                  color2="darkorange", label2=l,
+                                  ahead="none", acolor="darkorange",
+                                  aweight="2")
+    return dot, errors
 
 
-def transitions2dot(transitions):
+def process_transitions(transitions, group=True, logs=False):
+    """Convert a pmjq transition dict into a dot-readable string.
+
+    :param transitions: The dict containing transitions
+    :param group: Group errors in a cluster
+    :return: The dot string
+    """
     dot = "digraph transitions {\n"
-    # dot += "    rankdir = LR;\n" 
+    dot += "    rankdir = TB;\n"
     dot += "    splines=ortho;\n"
     dot += "    node[penwidth=2.0];\n"
-    i = 0
+    errors = []
     for t in transitions:
-        dot += trans2dot(normalize(t))
-        i += 1
+        d, err = trans2dot(normalize(t), logs=logs)
+        dot += d
+        errors += err
+    if group and len(errors) > 0:  # Dirty hack to gather errors
+        dot += "subgraph cluster_errors {{\n"\
+               "color=none\nedge[style=invis]\n{}\n"\
+               "}}\n".format(" -> ".join(errors))
     dot += "}"
     return dot
-

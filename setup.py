@@ -15,6 +15,8 @@ setup(name='pmjqtools',
       include_package_data=True,
       package_data={},
       entry_points={
-          'console_scripts': ['pmjq_interactive=pmjqtools:pmjq_interactive',
-                              'pmjq_viz=pmjqtools:pmjq_viz'],
+          'console_scripts': [
+              # FIXME: Remove old entrypoints, replace with new python functions
+              'pmjq_interactive=pmjqtools:pmjq_interactive',
+              'pmjq_viz=pmjqtools:pmjq_viz'],
       },)

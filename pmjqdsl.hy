@@ -171,7 +171,7 @@ set -x
 set -o pipefail
 
 export PLAYGROUND=/tmp
-export MD5_CMD=md5
+export MD5_CMD=md5sum
 
 rm -rf ${PLAYGROUND}/input
 rm -rf ${PLAYGROUND}/output
@@ -183,7 +183,7 @@ mkdir -p ${PLAYGROUND}/output
 mkdir -p ${PLAYGROUND}/error
 mkdir -p ${PLAYGROUND}/log
 
-for file in $(seq 1000)
+for file in $(seq 10000)
 do
     echo $file > ${PLAYGROUND}/input/$file.txt
 done
@@ -196,8 +196,8 @@ cd \"$(dirname \"$0\")\"
                     :inputs ["${PLAYGROUND}/input"]
                     :cmd "${MD5_CMD}"
                     :outputs ["${PLAYGROUND}/output"]
-                    ;:error "${PLAYGROUND}/error"
-                    ;:log "${PLAYGROUND}/log"
+                    :error "${PLAYGROUND}/error"
+                    :log "${PLAYGROUND}/log"
                     :pmjq-log "${PLAYGROUND}/pmjq.log"
                     :id "Test_pmjq")
      )
