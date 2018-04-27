@@ -1,0 +1,36 @@
+.. PMJQ Tools documentation master file, created by
+   sphinx-quickstart on Wed Mar 30 11:52:10 2016.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+#######################################
+PMJQ
+#######################################
+
+PMJQ is a daemon that watches one or more directories for new files, process them using a user-provided command, and dumps the results in one or more other directories.
+
+Chaining multiple instances allows one to build a whole data processing flowchart made up of individual commands.
+
+Sharing the filesystem between mutliple machines allows one to share the load transparently.
+
+The daemon is written in Go and can be statically compiled.
+
+The supporting tools are written in Python.
+
+A more complete documentation has yet to be written.
+
+
+***************
+Installation from sources
+***************
+
+The only hard dependency for building the package is the  `Go programming language <https://golang.org/doc/install>`. Optional dependencies include:
+
+* `lnav <http://lnav.org/>`
+* `sshfs <https://github.com/libfuse/sshfs>`
+* `golint <https://godoc.org/golang.org/x/lint/golint>`
+* Python 3
+
+Clone the repo and run ``make install`` in it. To only install the tool and none of its supporting components, run ``go install`` instead.
+
+
+
