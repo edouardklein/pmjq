@@ -1,0 +1,67 @@
+{
+    "_comment": "https://regex101.com/r/uWn9FI/1",
+    "go_keyvalue_log" : {
+        "title" : "PMJQ log format",
+        "description" : "A short transition description followed by the free form message.",
+        "url" : "http://example.com/doesntextist.html",
+        "regex" : {
+            "basic" : {
+                "pattern" : "^(?<timestamp>\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2}) (?<file>\\w+.\\w+:\\d+:) (?<id>\\d{6,}) (?<lock>(locked|free)) +(?<inputfiles>\\[([^\\[\\],\\n]+(, | *\\]))*) +(?<jobid>\\d{3,})-(?<command>[^\\n]*)\\((?<pid>[0-9 \\?]{6,})\\)-> +(?<outputfiles>\\[([^\\[\\],\\n]+(, | *\\]))*) +\\[(?<logfile>[^\\[\\]\\n]+)?\\] +(?<custodian>[\\w->]+) +(?<level>(DEBUG|INFO|WARNING|ERROR)) +(?<msg>[^\\n]*)$"
+            }
+        },
+        "level-field" : "level",
+        "level" : {
+            "error" : "ERROR",
+            "warning" : "WARNING",
+            "debug" : "DEBUG",
+            "info": "INFO"
+        },
+        "body-field": "msg",
+        "opid-field": "id",
+        "module-field": "custodian",
+        "value" : {
+            "custodian" : {
+                "kind" : "string",
+                "identifier" : false
+            },
+            "file" : {
+                "kind" : "string",
+                "identifier" : false
+            },
+            "lock" : {
+                "kind" : "string",
+                "identifier" : false
+            },
+            "inputfiles" : {
+                "kind" : "string",
+                "identifier" : false
+            },
+            "command" : {
+                "kind" : "string",
+                "identifier" : false
+            },
+            "id" : {
+                "kind" : "integer",
+                "identifier" : true
+            },
+            "jobid" : {
+                "kind" : "integer",
+                "identifier" : true
+            },
+            "pid" : {
+                "kind" : "integer",
+                "identifier" : true
+            },
+            "outputfiles" : {
+                "kind" : "string",
+                "identifier" : false
+            }
+        },
+        "sample" : [
+            {
+                "line" : "2017/01/05 10:53:52 pmjq.go:431: 004756 locked [/tmp/input/5278.txt, /tmp/input/2.txt ]  000-&{Command 0xc4201161c0 0xc4200 (??????)-> [/tmp/output/5278.txt] []  lockFile    DEBUG Deferred lock release on /tmp/output/5278.txt.lock: 0"
+            },
+            {"line": "2017/01/05 10:55:23 pmjq.go:278: 000001 free   [mp/input0/aaa_OK.txt, p/input1/Foo_aaa.txt]  000-&{Command 0xc4201161c0 0xc4200 (??????)-> [Matches.suffix}}.txt, B/{{.Invariant}}.txt]  [g/{{.Invariant}}.log] candidate   DEBUG Candidate input"}
+        ]
+    }
+}
