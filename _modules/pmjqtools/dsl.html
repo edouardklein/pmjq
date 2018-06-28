@@ -1,0 +1,406 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>pmjqtools.dsl &#8212; PMJQ Tools 0.0.0 documentation</title>
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for pmjqtools.dsl</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;We have developped a DSL to help users design complex data processing</span>
+<span class="sd">pipelines.</span>
+
+<span class="sd">The atomic unit of a data processing pipeline is the</span>
+<span class="sd">*transition*: a single command that defines a step in</span>
+<span class="sd">the pipeline.</span>
+
+<span class="sd">Our DSL consists of Python dictionaries (one per transition)</span>
+<span class="sd">that roughly maps to the command line options of the pmjq executable</span>
+<span class="sd">(`Basic Usage`_).</span>
+
+
+<span class="sd">Examples</span>
+<span class="sd">==========</span>
+
+<span class="sd">Simplest example</span>
+<span class="sd">-----------------</span>
+
+<span class="sd">.. literalinclude:: smallest_transition.py</span>
+<span class="sd">    :language: python</span>
+
+<span class="sd">.. figure:: smallest_transition.png</span>
+<span class="sd">   :alt: A visualization of the smallest possible transition</span>
+
+<span class="sd">This is the simplest example of a transition: every time a file is dropped</span>
+<span class="sd">in /tmp/input, its sha256sum will be computed and put in a file of the same</span>
+<span class="sd">name in /tmp/output. The input file will be deleted.</span>
+
+
+<span class="sd">This code can be saved in, e.g. a ``transition.py`` file and put under version</span>
+<span class="sd">control.</span>
+<span class="sd">One can use all the functionalities of Python to dynamically determine</span>
+<span class="sd">what to put in the dictionaries (e.g. decide, given the current load, whether</span>
+<span class="sd">to have a transition work from a disk or from a RAM filesystem).</span>
+
+<span class="sd">Most complete example</span>
+<span class="sd">----------------------</span>
+
+<span class="sd">.. literalinclude:: complete_transition.py</span>
+<span class="sd">    :language: python</span>
+
+<span class="sd">.. figure:: complete_transition.png</span>
+<span class="sd">   :alt: A visualization of the most complete transition</span>
+
+
+<span class="sd">This transition uses all the advanced features of PMJQ:</span>
+<span class="sd"> * Mutliple inputs</span>
+<span class="sd">    * Files in the two input dirs are matched with one another depending\</span>
+<span class="sd">      on part of their filenames, as specified in their respective regexes.</span>
+<span class="sd"> * Multiple outputs</span>
+<span class="sd">    * Whose filenames depend on the input filenames</span>
+<span class="sd"> * Error dirs to copy the input files to in case of a failure of the command</span>
+<span class="sd"> * Documented side-effects of the command</span>
+<span class="sd">    * PMJQ can not possibly know what the command it is running does.\</span>
+<span class="sd">      The side effects are just here for documentation purposes.</span>
+<span class="sd">      As a rule of thumb, one should avoid them.</span>
+<span class="sd"> * Log dir to store the standard error of the command</span>
+<span class="sd">    * The log file&#39;s name depends on both imput file&#39;s names</span>
+<span class="sd"> * PMJQ will stop when the input dirs are empty (useful for tests or one-off\</span>
+<span class="sd">   processing)</span>
+
+
+<span class="sd">Bash script generation</span>
+<span class="sd">========================</span>
+
+
+<span class="sd">One can generate a the bash command that will start a transition with:</span>
+
+<span class="sd">.. code-block:: python</span>
+
+<span class="sd">    from pmjqtools.dsl import pmjq_command</span>
+<span class="sd">    transition = {&#39;stdin&#39;: &#39;/tmp/input/&#39;,</span>
+<span class="sd">                  &#39;stdout&#39;: &#39;/tmp/output/&#39;,</span>
+<span class="sd">                  &#39;cmd&#39;: &#39;sha256sum&#39;}</span>
+<span class="sd">    print(pmjq_command(transition))</span>
+
+
+<span class="sd">Or, as a one-liner:</span>
+
+<span class="sd">.. command-output:: pmjq_cmd --exec smallest_transition.py\</span>
+<span class="sd"> &#39;[smallest_transition]&#39;</span>
+
+
+<span class="sd">DataFlow Visualization</span>
+<span class="sd">=======================</span>
+
+<span class="sd">The pmjq_viz command can be used to generate a .dot file that can be further</span>
+<span class="sd">processed as an image.</span>
+
+<span class="sd">.. command-output:: pmjq_viz --exec smallest_transition.py\</span>
+<span class="sd"> &#39;[smallest_transition]&#39;</span>
+
+
+<span class="sd">Using `entr`, one can make change to one or more transition and visualize the</span>
+<span class="sd">changes in near real-time.</span>
+
+<span class="sd">.. code-block:: bash</span>
+
+<span class="sd">    $picviewer_with_autoreload smallest_transition.png&amp;</span>
+<span class="sd">    echo *.py | entr sh -c &quot;pmjq_viz --exec smallest_transition.py\</span>
+<span class="sd">    &#39;[smallest_transition]&#39; \</span>
+<span class="sd">    | dot -Tpng &gt; smallest_transition.png&quot;</span>
+
+
+<span class="sd">Remote vs. local usage</span>
+<span class="sd">========================</span>
+
+
+<span class="sd">If one only uses the DSL to generate commands and visualize the pipeline,</span>
+<span class="sd">then the `pmjqtools`</span>
+<span class="sd">package need only be installed on the designer&#39;s workstation. The</span>
+<span class="sd">computer that will actually run the pipeline only need the</span>
+<span class="sd">static `pmjq` binary and a way to remotely run the generated commands</span>
+<span class="sd">(typically `ssh`).</span>
+
+<span class="sd">It can be easier to use the more advanced tools described in</span>
+<span class="sd">:py:mod:`pmjqtools.tools` on the remote machine, with the drawback of</span>
+<span class="sd">having to install the `pmjqtools` package on the remote machine.</span>
+
+<span class="sd">DSL API Reference</span>
+<span class="sd">==================</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">string</span> <span class="k">import</span> <span class="n">Formatter</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">docopt</span> <span class="k">import</span> <span class="n">docopt</span>
+
+
+<div class="viewcode-block" id="normalize"><a class="viewcode-back" href="../../index.html#pmjqtools.dsl.normalize">[docs]</a><span class="k">def</span> <span class="nf">normalize</span><span class="p">(</span><span class="n">transition</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="s2">&quot;Allow omitting id and the use of shortcuts like stdin, stdout and error&quot;</span>
+    <span class="k">assert</span> <span class="p">(</span><span class="s2">&quot;stdin&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="s2">&quot;inputs&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">),</span> \
+        <span class="s2">&quot;Use either stdin or inputs but not both nor neither&quot;</span>  <span class="c1"># XOR</span>
+    <span class="k">assert</span> <span class="p">(</span><span class="s2">&quot;stdout&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="s2">&quot;outputs&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">),</span> \
+        <span class="s2">&quot;Use either stdout or outputs but not both nor neither&quot;</span>  <span class="c1"># XOR</span>
+    <span class="k">assert</span> <span class="ow">not</span> <span class="p">((</span><span class="s2">&quot;error&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="s2">&quot;errors&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">)),</span> \
+        <span class="s2">&quot;Use either error or errors or neither but not both&quot;</span>  <span class="c1"># NAND</span>
+    <span class="k">assert</span> <span class="s1">&#39;cmd&#39;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">,</span> <span class="s2">&quot;Every transition needs a command&quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;stdin&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">:</span>
+        <span class="n">transition</span><span class="p">[</span><span class="s2">&quot;inputs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">transition</span><span class="p">[</span><span class="s2">&quot;stdin&quot;</span><span class="p">]]</span>
+        <span class="k">del</span> <span class="n">transition</span><span class="p">[</span><span class="s1">&#39;stdin&#39;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="s2">&quot;stdout&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">:</span>
+        <span class="n">transition</span><span class="p">[</span><span class="s2">&quot;outputs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">transition</span><span class="p">[</span><span class="s2">&quot;stdout&quot;</span><span class="p">]]</span>
+        <span class="k">del</span> <span class="n">transition</span><span class="p">[</span><span class="s1">&#39;stdout&#39;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="s2">&quot;error&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">:</span>
+        <span class="n">transition</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">transition</span><span class="p">[</span><span class="s2">&quot;error&quot;</span><span class="p">]]</span>
+        <span class="k">del</span> <span class="n">transition</span><span class="p">[</span><span class="s1">&#39;error&#39;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="s1">&#39;id&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">:</span>
+        <span class="n">transition</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">transition</span><span class="p">[</span><span class="s1">&#39;cmd&#39;</span><span class="p">]</span>
+    <span class="n">root</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="k">if</span> <span class="n">root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;inputs&#39;</span><span class="p">,</span> <span class="s1">&#39;outputs&#39;</span><span class="p">,</span> <span class="s1">&#39;errors&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">]:</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">transition</span><span class="p">[</span><span class="n">key</span><span class="p">]))</span>
+                  <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isabs</span><span class="p">(</span><span class="n">transition</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="n">x</span><span class="p">])]:</span>
+            <span class="n">transition</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">transition</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="n">i</span><span class="p">])</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;log&quot;</span><span class="p">,</span> <span class="s2">&quot;stderr&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isabs</span><span class="p">(</span><span class="n">transition</span><span class="p">[</span><span class="n">key</span><span class="p">]):</span>
+            <span class="n">transition</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">transition</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">transition</span></div>
+
+
+<div class="viewcode-block" id="pmjq_command"><a class="viewcode-back" href="../../index.html#pmjqtools.dsl.pmjq_command">[docs]</a><span class="k">def</span> <span class="nf">pmjq_command</span><span class="p">(</span><span class="n">transition</span><span class="p">,</span> <span class="n">redirect</span><span class="o">=</span><span class="s2">&quot;&amp;&gt;&quot;</span><span class="p">):</span>
+    <span class="s2">&quot;Return the shell command that will make pmjq run the given transition&quot;</span>
+    <span class="n">transition</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">transition</span><span class="p">)</span>
+    <span class="n">answer</span> <span class="o">=</span> <span class="s2">&quot;pmjq &quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;quit_empty&quot;</span> <span class="ow">in</span> <span class="n">transition</span> <span class="ow">and</span> <span class="n">transition</span><span class="p">[</span><span class="s2">&quot;quit_empty&quot;</span><span class="p">]:</span>
+        <span class="n">answer</span> <span class="o">+=</span> <span class="s2">&quot;--quit-when-empty &quot;</span>
+    <span class="n">answer</span> <span class="o">+=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">pattern</span><span class="p">:</span> <span class="s2">&quot;--input=&quot;</span><span class="o">+</span><span class="n">pattern</span><span class="p">,</span>
+                           <span class="n">transition</span><span class="p">[</span><span class="s2">&quot;inputs&quot;</span><span class="p">]))</span> <span class="o">+</span> <span class="s2">&quot; &quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;invariant&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">:</span>
+        <span class="n">answer</span> <span class="o">+=</span> <span class="s2">&quot;--invariant=&quot;</span><span class="o">+</span><span class="n">transition</span><span class="p">[</span><span class="s2">&quot;invariant&quot;</span><span class="p">]</span><span class="o">+</span><span class="s2">&quot; &quot;</span>
+    <span class="n">answer</span> <span class="o">+=</span> <span class="n">transition</span><span class="p">[</span><span class="s2">&quot;cmd&quot;</span><span class="p">]</span><span class="o">+</span><span class="s2">&quot; &quot;</span>
+    <span class="n">answer</span> <span class="o">+=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">template</span><span class="p">:</span> <span class="s2">&quot;--output=&quot;</span><span class="o">+</span><span class="n">template</span><span class="p">,</span>
+                           <span class="n">transition</span><span class="p">[</span><span class="s2">&quot;outputs&quot;</span><span class="p">]))</span><span class="o">+</span><span class="s2">&quot; &quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;stderr&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">:</span>
+        <span class="n">answer</span> <span class="o">+=</span> <span class="s2">&quot;--stderr=&quot;</span><span class="o">+</span><span class="n">transition</span><span class="p">[</span><span class="s2">&quot;stderr&quot;</span><span class="p">]</span><span class="o">+</span><span class="s2">&quot; &quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;errors&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">:</span>
+        <span class="n">answer</span> <span class="o">+=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">tmplt</span><span class="p">:</span> <span class="s2">&quot;--error=&quot;</span><span class="o">+</span><span class="n">tmplt</span><span class="p">,</span>
+                               <span class="n">transition</span><span class="p">[</span><span class="s2">&quot;errors&quot;</span><span class="p">]))</span><span class="o">+</span><span class="s2">&quot; &quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;log&quot;</span> <span class="ow">in</span> <span class="n">transition</span><span class="p">:</span>
+        <span class="n">answer</span> <span class="o">+=</span> <span class="n">redirect</span> <span class="o">+</span> <span class="s2">&quot; &quot;</span> <span class="o">+</span> <span class="n">transition</span><span class="p">[</span><span class="s2">&quot;log&quot;</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">answer</span></div>
+
+
+<span class="n">EDGE_TEMPLATE</span> <span class="o">=</span> <span class="s1">&#39;&#39;&#39;</span>
+<span class="s1">{{ &quot;</span><span class="si">{node1}</span><span class="s1">&quot; [shape=&quot;</span><span class="si">{shape1}</span><span class="s1">&quot;, color=&quot;</span><span class="si">{color1}</span><span class="s1">&quot;, label=&quot;</span><span class="si">{label1}</span><span class="s1">&quot;]}}</span>
+<span class="s1">-&gt;</span>
+<span class="s1">{{&quot;</span><span class="si">{node2}</span><span class="s1">&quot; [shape=&quot;</span><span class="si">{shape2}</span><span class="s1">&quot;, color=&quot;</span><span class="si">{color2}</span><span class="s1">&quot;, label=&quot;</span><span class="si">{label2}</span><span class="s1">&quot;]}}</span>
+<span class="s1">[arrowhead=&quot;</span><span class="si">{ahead}</span><span class="s1">&quot;, style=&quot;</span><span class="si">{astyle}</span><span class="s1">&quot;,color=&quot;</span><span class="si">{acolor}</span><span class="s1">&quot;,weight=</span><span class="si">{aweight}</span><span class="s1">];</span>
+<span class="s1">&#39;&#39;&#39;</span>
+
+
+<div class="viewcode-block" id="dot_nodes_and_edge"><a class="viewcode-back" href="../../index.html#pmjqtools.dsl.dot_nodes_and_edge">[docs]</a><span class="k">def</span> <span class="nf">dot_nodes_and_edge</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Return the dot code for two nodes and an edge&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">Formatter</span><span class="p">()</span><span class="o">.</span><span class="n">vformat</span><span class="p">(</span><span class="n">EDGE_TEMPLATE</span><span class="p">,</span> <span class="p">(),</span>
+                               <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="trans2dot"><a class="viewcode-back" href="../../index.html#pmjqtools.dsl.trans2dot">[docs]</a><span class="k">def</span> <span class="nf">trans2dot</span><span class="p">(</span><span class="n">transition</span><span class="p">,</span> <span class="n">include_logs</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Transform a pmjq transition into a dot string.</span>
+
+<span class="sd">    :param transition: The transition to convert</span>
+<span class="sd">    :param include_logs: Include the &#39;logs&#39; field</span>
+<span class="sd">    :return: The dot string, and the list of &#39;error&#39; fields\</span>
+<span class="sd">    (for further processing)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dot</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">tr</span> <span class="o">=</span> <span class="n">transition</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;id&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">transition</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;inputs&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">dot</span> <span class="o">+=</span> <span class="n">dot_nodes_and_edge</span><span class="p">(</span><span class="n">node1</span><span class="o">=</span><span class="s1">&#39;dir_&#39;</span><span class="o">+</span><span class="n">name</span><span class="p">,</span> <span class="n">shape1</span><span class="o">=</span><span class="s2">&quot;oval&quot;</span><span class="p">,</span>
+                                  <span class="n">color1</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">,</span> <span class="n">label1</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+                                  <span class="n">node2</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span> <span class="n">shape2</span><span class="o">=</span><span class="s2">&quot;box&quot;</span><span class="p">,</span>
+                                  <span class="n">color2</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span> <span class="n">label2</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span>
+                                  <span class="n">ahead</span><span class="o">=</span><span class="s2">&quot;normal&quot;</span><span class="p">,</span> <span class="n">acolor</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">,</span> <span class="n">aweight</span><span class="o">=</span><span class="s2">&quot;10&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">transition</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;outputs&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">o</span><span class="p">)</span>
+        <span class="n">dot</span> <span class="o">+=</span> <span class="n">dot_nodes_and_edge</span><span class="p">(</span><span class="n">node1</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span> <span class="n">shape1</span><span class="o">=</span><span class="s2">&quot;box&quot;</span><span class="p">,</span>
+                                  <span class="n">color1</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span> <span class="n">label1</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span>
+                                  <span class="n">node2</span><span class="o">=</span><span class="s1">&#39;dir_&#39;</span><span class="o">+</span><span class="n">name</span><span class="p">,</span> <span class="n">shape2</span><span class="o">=</span><span class="s2">&quot;oval&quot;</span><span class="p">,</span>
+                                  <span class="n">color2</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">,</span> <span class="n">label2</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+                                  <span class="n">ahead</span><span class="o">=</span><span class="s2">&quot;normal&quot;</span><span class="p">,</span> <span class="n">acolor</span><span class="o">=</span><span class="s2">&quot;blue&quot;</span><span class="p">,</span> <span class="n">aweight</span><span class="o">=</span><span class="s2">&quot;10&quot;</span><span class="p">)</span>
+    <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">transition</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;errors&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="n">dot</span> <span class="o">+=</span> <span class="n">dot_nodes_and_edge</span><span class="p">(</span><span class="n">node1</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span> <span class="n">shape1</span><span class="o">=</span><span class="s2">&quot;box&quot;</span><span class="p">,</span>
+                                  <span class="n">color1</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span> <span class="n">label1</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span>
+                                  <span class="n">node2</span><span class="o">=</span><span class="s1">&#39;dir_&#39;</span><span class="o">+</span><span class="n">name</span><span class="p">,</span> <span class="n">shape2</span><span class="o">=</span><span class="s2">&quot;hexagon&quot;</span><span class="p">,</span>
+                                  <span class="n">color2</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span> <span class="n">label2</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+                                  <span class="n">ahead</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">,</span> <span class="n">astyle</span><span class="o">=</span><span class="s2">&quot;dotted&quot;</span><span class="p">,</span> <span class="n">acolor</span><span class="o">=</span><span class="s2">&quot;red&quot;</span><span class="p">,</span>
+                                  <span class="n">aweight</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">)</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;&quot;dir_</span><span class="si">{}</span><span class="s1">&quot;&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">transition</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;side_effects&quot;</span><span class="p">,</span> <span class="p">[]):</span>
+        <span class="n">dot</span> <span class="o">+=</span> <span class="n">dot_nodes_and_edge</span><span class="p">(</span><span class="n">node1</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span> <span class="n">shape1</span><span class="o">=</span><span class="s2">&quot;box&quot;</span><span class="p">,</span>
+                                  <span class="n">color1</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span> <span class="n">label1</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span>
+                                  <span class="n">node2</span><span class="o">=</span><span class="s1">&#39;se_&#39;</span><span class="o">+</span><span class="n">s</span><span class="p">,</span> <span class="n">shape2</span><span class="o">=</span><span class="s2">&quot;diamond&quot;</span><span class="p">,</span>
+                                  <span class="n">color2</span><span class="o">=</span><span class="s2">&quot;purple&quot;</span><span class="p">,</span> <span class="n">label2</span><span class="o">=</span><span class="n">s</span><span class="p">,</span>
+                                  <span class="n">ahead</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">,</span> <span class="n">acolor</span><span class="o">=</span><span class="s2">&quot;purple&quot;</span><span class="p">,</span> <span class="n">aweight</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">)</span>
+    <span class="n">logs</span> <span class="o">=</span> <span class="n">transition</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stderr&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">logs</span> <span class="ow">and</span> <span class="n">include_logs</span><span class="p">:</span>
+        <span class="n">logs</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">logs</span><span class="p">)</span>
+        <span class="n">dot</span> <span class="o">+=</span> <span class="n">dot_nodes_and_edge</span><span class="p">(</span><span class="n">node1</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span> <span class="n">shape1</span><span class="o">=</span><span class="s2">&quot;box&quot;</span><span class="p">,</span>
+                                  <span class="n">color1</span><span class="o">=</span><span class="s2">&quot;green&quot;</span><span class="p">,</span> <span class="n">label1</span><span class="o">=</span><span class="n">tr</span><span class="p">,</span>
+                                  <span class="n">node2</span><span class="o">=</span><span class="s1">&#39;dir_&#39;</span><span class="o">+</span><span class="n">logs</span><span class="p">,</span> <span class="n">shape2</span><span class="o">=</span><span class="s2">&quot;octagon&quot;</span><span class="p">,</span>
+                                  <span class="n">color2</span><span class="o">=</span><span class="s2">&quot;darkorange&quot;</span><span class="p">,</span> <span class="n">label2</span><span class="o">=</span><span class="n">logs</span><span class="p">,</span>
+                                  <span class="n">ahead</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">,</span> <span class="n">acolor</span><span class="o">=</span><span class="s2">&quot;darkorange&quot;</span><span class="p">,</span>
+                                  <span class="n">aweight</span><span class="o">=</span><span class="s2">&quot;2&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">dot</span><span class="p">,</span> <span class="n">errors</span></div>
+
+
+<div class="viewcode-block" id="transitions2dot"><a class="viewcode-back" href="../../index.html#pmjqtools.dsl.transitions2dot">[docs]</a><span class="k">def</span> <span class="nf">transitions2dot</span><span class="p">(</span><span class="n">transitions</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">logs</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convert a pmjq transition list into a dot string.</span>
+
+<span class="sd">    :param transitions: The list of transitions</span>
+<span class="sd">    :param group: Group errors in a cluster</span>
+<span class="sd">    :return: The dot string</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dot</span> <span class="o">=</span> <span class="s2">&quot;digraph transitions {</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="n">dot</span> <span class="o">+=</span> <span class="s2">&quot;    rankdir = TB;</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="n">dot</span> <span class="o">+=</span> <span class="s2">&quot;    splines=ortho;</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="n">dot</span> <span class="o">+=</span> <span class="s2">&quot;    node[penwidth=2.0];</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">transitions</span><span class="p">:</span>
+        <span class="n">d</span><span class="p">,</span> <span class="n">err</span> <span class="o">=</span> <span class="n">trans2dot</span><span class="p">(</span><span class="n">normalize</span><span class="p">(</span><span class="n">t</span><span class="p">),</span> <span class="n">include_logs</span><span class="o">=</span><span class="n">logs</span><span class="p">)</span>
+        <span class="n">dot</span> <span class="o">+=</span> <span class="n">d</span>
+        <span class="n">errors</span> <span class="o">+=</span> <span class="n">err</span>
+    <span class="k">if</span> <span class="n">group</span> <span class="ow">and</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">errors</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>  <span class="c1"># Dirty hack to gather errors</span>
+        <span class="n">dot</span> <span class="o">+=</span> <span class="s2">&quot;subgraph cluster_errors {{</span><span class="se">\n</span><span class="s2">&quot;</span>\
+               <span class="s2">&quot;color=none</span><span class="se">\n</span><span class="s2">edge[style=invis]</span><span class="se">\n</span><span class="si">{}</span><span class="se">\n</span><span class="s2">&quot;</span>\
+               <span class="s2">&quot;}}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">&quot; -&gt; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">errors</span><span class="p">))</span>
+    <span class="n">dot</span> <span class="o">+=</span> <span class="s2">&quot;}&quot;</span>
+    <span class="k">return</span> <span class="n">dot</span></div>
+
+
+<div class="viewcode-block" id="run_on_transitions_from_cli"><a class="viewcode-back" href="../../index.html#pmjqtools.dsl.run_on_transitions_from_cli">[docs]</a><span class="k">def</span> <span class="nf">run_on_transitions_from_cli</span><span class="p">(</span><span class="n">arguments</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Call func with the transitions given on the cli.</span>
+
+<span class="sd">    The user can specify the transitions using an optional &lt;exec.py&gt;</span>
+<span class="sd">    argument, which specify some code to run (typically setting a variable),</span>
+<span class="sd">    and a &lt;eval&gt; argument, whose eval()uation gives the transitions.</span>
+
+<span class="sd">    In Python 3, exec() can no longer modify the local variables:</span>
+<span class="sd">    https://stackoverflow.com/questions/1463306/how-does-exec-work-with-locals</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ldict</span> <span class="o">=</span> <span class="nb">locals</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">arguments</span><span class="p">[</span><span class="s1">&#39;--exec&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">exec</span><span class="p">(</span><span class="nb">open</span><span class="p">(</span><span class="n">arguments</span><span class="p">[</span><span class="s1">&#39;--exec&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">read</span><span class="p">(),</span> <span class="nb">globals</span><span class="p">(),</span> <span class="n">ldict</span><span class="p">)</span>
+    <span class="n">transitions</span> <span class="o">=</span> <span class="p">[</span><span class="n">normalize</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">root</span><span class="p">)</span>
+                   <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">eval</span><span class="p">(</span><span class="n">arguments</span><span class="p">[</span><span class="s1">&#39;&lt;eval&gt;&#39;</span><span class="p">],</span> <span class="nb">globals</span><span class="p">(),</span> <span class="n">ldict</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="n">transitions</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="viz"><a class="viewcode-back" href="../../index.html#pmjqtools.dsl.viz">[docs]</a><span class="k">def</span> <span class="nf">viz</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;pmjq_viz: Visualize a list of transition as a dot graph</span>
+
+<span class="sd">    Usage:</span>
+<span class="sd">    pmjq_viz [--exec=&lt;exec.py&gt;] [--logs] &lt;eval&gt;</span>
+
+<span class="sd">    Options:</span>
+<span class="sd">      --exec=&lt;exec.py&gt;       Specify a Python file to be exec()d before &lt;eval&gt;</span>
+<span class="sd">                             is eval()ed.</span>
+<span class="sd">      --logs                 Draw the logs directories.</span>
+
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">arguments</span> <span class="o">=</span> <span class="n">docopt</span><span class="p">(</span><span class="n">viz</span><span class="o">.</span><span class="vm">__doc__</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s1">&#39;pmjq_viz 0.0.0&#39;</span><span class="p">)</span>
+    <span class="n">run_on_transitions_from_cli</span><span class="p">(</span>
+        <span class="n">arguments</span><span class="p">,</span>
+        <span class="k">lambda</span> <span class="n">trans</span><span class="p">:</span> <span class="nb">print</span><span class="p">(</span><span class="n">transitions2dot</span><span class="p">(</span><span class="n">trans</span><span class="p">,</span>
+                                            <span class="n">logs</span><span class="o">=</span><span class="n">arguments</span><span class="p">[</span><span class="s1">&#39;--logs&#39;</span><span class="p">])))</span></div>
+
+
+<div class="viewcode-block" id="cmd"><a class="viewcode-back" href="../../index.html#pmjqtools.dsl.cmd">[docs]</a><span class="k">def</span> <span class="nf">cmd</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;pmjq_cmd: print the pmjq commands that will run the given transitions.</span>
+
+<span class="sd">    Usage:</span>
+<span class="sd">    pmjq_cmd [--exec=&lt;exec.py&gt;] &lt;eval&gt;</span>
+
+<span class="sd">    Options:</span>
+<span class="sd">      --exec=&lt;exec.py&gt;       Specify a Python file to be exec()d before &lt;eval&gt;</span>
+<span class="sd">                             is eval()ed</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">arguments</span> <span class="o">=</span> <span class="n">docopt</span><span class="p">(</span><span class="n">cmd</span><span class="o">.</span><span class="vm">__doc__</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s1">&#39;pmjq_viz 0.0.0&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">print_commands</span><span class="p">(</span><span class="n">transitions</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">transitions</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">pmjq_command</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+    <span class="n">run_on_transitions_from_cli</span><span class="p">(</span><span class="n">arguments</span><span class="p">,</span> <span class="n">print_commands</span><span class="p">)</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2016, Edouard Klein.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

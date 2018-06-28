@@ -1,0 +1,452 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>pmjqtools.pmjq_sff &#8212; PMJQ Tools 0.0.0 documentation</title>
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for pmjqtools.pmjq_sff</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Some users are so technologically disabled that they can&#39;t even mount a</span>
+<span class="sd">remote</span>
+<span class="sd">directory. To help them use the dataflows made and run with `pmjq` we</span>
+<span class="sd">developped</span>
+<span class="sd">a Web UI. We discourage its use, as for this use case web technologies are</span>
+<span class="sd">inferior</span>
+<span class="sd">in almost every way to remote filesystems.</span>
+<span class="sd">Sadly sometimes empowering the users is not an option and one has to</span>
+<span class="sd">dumb the tool down.</span>
+
+<span class="sd">Usage</span>
+<span class="sd">------</span>
+
+<span class="sd">The ``serve`` target of the Makefile gives a quick overview of what you need</span>
+<span class="sd">in order to expose the Sigle File Flow (SFF) to the world:</span>
+
+<span class="sd">.. command-output:: make -C .. -n serve</span>
+
+<span class="sd">.. todo::</span>
+<span class="sd">    * Suggest ways to adapt the web UI to a particular use case.</span>
+<span class="sd">    * FIXME: Make the websocket address in core.cljs paramterizable somehow</span>
+
+<span class="sd">Architecture</span>
+<span class="sd">-------------</span>
+
+<span class="sd">The `pmjq_sff` command (:py:func:`sff`) provides the backend for the Web UI.</span>
+<span class="sd">It is started by `websocketd &lt;http://websocketd.com/&gt;`_, which will communicate</span>
+<span class="sd">with `pmjq_sff` using its standard input and output.</span>
+
+<span class="sd">The front-end is written in ClojureScript. The front-end communicates with</span>
+<span class="sd">the backend using the websocket opened by websocketd.</span>
+
+<span class="sd">.. todo::</span>
+<span class="sd">    * Make a pretty picture describing this architecture</span>
+<span class="sd">    * Link to the documentation of the CLJS code</span>
+
+<span class="sd">Protocol</span>
+<span class="sd">---------</span>
+
+<span class="sd">The font-end and the backend communicate using a text protocol read and written</span>
+<span class="sd">from the front-end using a websocket, and from the backend using stdout and</span>
+<span class="sd">stdin,</span>
+<span class="sd">thanks to the translation made by websocketd.</span>
+
+<span class="sd">Quick description:</span>
+
+<span class="sd">* The protocol is text based.</span>
+<span class="sd">* All messages are one line long.</span>
+<span class="sd">* They are typed by a prefix followed by &#39;:&#39;</span>
+<span class="sd">* The front end never initiates an exchange, it only answers the backend.</span>
+<span class="sd">* Not all messages from the backend require an answer.</span>
+
+
+
+<span class="sd">.. list-table:: PMJQ UI protocol</span>
+<span class="sd">   :widths: 5 5 5 30 20</span>
+<span class="sd">   :header-rows: 1</span>
+
+<span class="sd">   * - Direction</span>
+<span class="sd">     - Type</span>
+<span class="sd">     - payload</span>
+<span class="sd">     - Meaning</span>
+<span class="sd">     - Example</span>
+<span class="sd">   * - ``&lt;-``</span>
+<span class="sd">     - input</span>
+<span class="sd">     - &lt;dir_name&gt;</span>
+<span class="sd">     - The backend informs the frontend that an input directory named\</span>
+<span class="sd">       &lt;dir_name&gt; exists.</span>
+<span class="sd">     - &lt;- ``input:/tmp/audio``</span>
+<span class="sd">   * - ``-&gt;``</span>
+<span class="sd">     - data</span>
+<span class="sd">     - &lt;dir_name&gt;:&lt;file_data_in_base_64&gt;</span>
+<span class="sd">     - The frontend gives the data to be written in &lt;dir_name&gt;</span>
+<span class="sd">     - -&gt; ``data:/tmp/audio:c7bc...5a93``</span>
+<span class="sd">   * - ``-&gt;``</span>
+<span class="sd">     - name</span>
+<span class="sd">     - &lt;dir_name&gt;:&lt;file_name&gt;</span>
+<span class="sd">     - The frontend informs the backend of the name the file had on the user&#39;s\</span>
+<span class="sd">       machine.</span>
+<span class="sd">     - -&gt; ``name:/tmp/audio/:toto.wav``</span>
+<span class="sd">   * - ``&lt;-``</span>
+<span class="sd">     - log</span>
+<span class="sd">     - &lt;one log line&gt;</span>
+<span class="sd">     - All pmjq log lines that are relevant to the user&#39;s files are sent\</span>
+<span class="sd">       this way</span>
+<span class="sd">     - &lt;- ``log:2018/04/30 17:24:14 pmjq.go:747: 000000 free...``</span>
+<span class="sd">   * - ``&lt;-``</span>
+<span class="sd">     - waiting</span>
+<span class="sd">     - &lt;dir_name&gt;:&lt;n&gt;</span>
+<span class="sd">     - The back-end tells the front-end that `n` files are waiting to be</span>
+<span class="sd">       processed in `dir_name`.</span>
+<span class="sd">     - &lt;- ``waiting:/tmp/input:42``</span>
+<span class="sd">   * - ``&lt;-``</span>
+<span class="sd">     - stderr</span>
+<span class="sd">     - &lt;fname&gt;:&lt;error_message&gt;</span>
+<span class="sd">     - The backend tells the frontend that one command failed a provides \</span>
+<span class="sd">       a b64-encoding of the standard error of the command that failed, along\</span>
+<span class="sd">       with the file name where this stderr was dumped.</span>
+<span class="sd">     - &lt;- ``stderr:/tmp/err/toto.txt.log:abd54...g6a67``</span>
+<span class="sd">   * - ``&lt;-``</span>
+<span class="sd">     - output</span>
+<span class="sd">     - &lt;URL of a file&gt;</span>
+<span class="sd">     - The backend tells the frontend that an output file is ready to download</span>
+<span class="sd">     - &lt;- ``output:http://example.com/toto.txt``</span>
+<span class="sd">   * - ``&lt;-``</span>
+<span class="sd">     - done</span>
+<span class="sd">     - N/A</span>
+<span class="sd">     - The backend tells the frontend that the processing is over and no more\</span>
+<span class="sd">       messages will be coming.</span>
+<span class="sd">     - &lt;- ``done``</span>
+
+
+<span class="sd">.. todo::</span>
+
+<span class="sd">    FIXME: This table will quickly get out of sync with the code, which is</span>
+<span class="sd">    actually split in three places:</span>
+
+<span class="sd">    * The Golang code that emits the logs</span>
+<span class="sd">    * The Python code in the Backend that parses those logs and sends the \</span>
+<span class="sd">      messages</span>
+<span class="sd">    * The CLJS code in the frontend that receives the messages.</span>
+
+<span class="sd">    We should generate the table from a piece of doc much closer to the code.</span>
+
+
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">os.path</span> <span class="k">import</span> <span class="n">join</span> <span class="k">as</span> <span class="n">pjoin</span>
+<span class="kn">from</span> <span class="nn">os.path</span> <span class="k">import</span> <span class="n">abspath</span>
+<span class="kn">from</span> <span class="nn">docopt</span> <span class="k">import</span> <span class="n">docopt</span>
+<span class="kn">from</span> <span class="nn">chan</span> <span class="k">import</span> <span class="n">quickthread</span> <span class="k">as</span> <span class="n">go</span>
+<span class="kn">from</span> <span class="nn">chan</span> <span class="k">import</span> <span class="n">Chan</span>
+<span class="kn">import</span> <span class="nn">inotify.adapters</span>
+<span class="kn">import</span> <span class="nn">inotify.constants</span>
+<span class="kn">import</span> <span class="nn">base64</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">import</span> <span class="nn">tempfile</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="k">import</span> <span class="n">datetime</span> <span class="k">as</span> <span class="n">dt</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">.dsl</span> <span class="k">import</span> <span class="n">run_on_transitions_from_cli</span>
+<span class="kn">from</span> <span class="nn">.tools</span> <span class="k">import</span> <span class="n">smart_unquote</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">defaultdict</span>
+
+
+<div class="viewcode-block" id="send"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.send">[docs]</a><span class="k">def</span> <span class="nf">send</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">):</span>
+    <span class="s2">&quot;Print and flush. No flush leads to the front- and back-end deadlocking.&quot;</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">args</span> <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,)))</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+    <span class="k">return</span></div>
+
+
+<div class="viewcode-block" id="get_default_filter"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.get_default_filter">[docs]</a><span class="k">def</span> <span class="nf">get_default_filter</span><span class="p">(</span><span class="n">pattern</span><span class="p">):</span>
+    <span class="s2">&quot;Look for pattern in the line&quot;</span>
+    <span class="k">return</span> <span class="k">lambda</span> <span class="n">log</span><span class="p">:</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">log</span></div>
+
+
+<div class="viewcode-block" id="default_handler"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.default_handler">[docs]</a><span class="k">def</span> <span class="nf">default_handler</span><span class="p">(</span><span class="n">log</span><span class="p">):</span>
+    <span class="s2">&quot;Send the log line to the frent-end&quot;</span>
+    <span class="n">send</span><span class="p">(</span><span class="s2">&quot;log:&quot;</span><span class="p">,</span> <span class="n">log</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="tail_filter_and_process"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.tail_filter_and_process">[docs]</a><span class="k">def</span> <span class="nf">tail_filter_and_process</span><span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">filterfunc</span><span class="p">,</span>
+                            <span class="n">handlerfunc</span><span class="o">=</span><span class="n">default_handler</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Watch a log file, filter the lines, process the matching lines.</span>
+
+<span class="sd">    If the filter function accepts the line, it will be processed by</span>
+<span class="sd">    the handler function.</span>
+
+<span class="sd">    :param fname: The file to watch</span>
+<span class="sd">    :param filterfunc: A boolean function of the log line to filter the lines\</span>
+<span class="sd">        containing the pattern</span>
+<span class="sd">    :param handlerfunc: A function to be called on each selected line</span>
+<span class="sd">    :param kwargs: Additionnal keywords arguments that will be passed to\</span>
+<span class="sd">        handlerfunc</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Reading log: &quot;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">fname</span><span class="p">)</span><span class="o">+</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>  <span class="c1"># Go to EOF</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">log</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">log</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">filterfunc</span><span class="p">(</span><span class="n">log</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="c1"># send(&quot;calling&quot;, str(handlerfunc))</span>
+            <span class="n">handlerfunc</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_error_filter"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.get_error_filter">[docs]</a><span class="k">def</span> <span class="nf">get_error_filter</span><span class="p">(</span><span class="n">pattern</span><span class="p">):</span>
+    <span class="s2">&quot;Match the log message PMJQ emits when a data processing command fails&quot;</span>
+    <span class="c1"># TODO Possibly improve matching</span>
+    <span class="k">return</span> <span class="k">lambda</span> <span class="n">log</span><span class="p">:</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">log</span> <span class="ow">and</span> <span class="s2">&quot;ERROR Rejected file from &quot;</span> <span class="ow">in</span> <span class="n">log</span></div>
+
+
+<div class="viewcode-block" id="error_handler"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.error_handler">[docs]</a><span class="k">def</span> <span class="nf">error_handler</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Send the error message of the failing data processing command to the</span>
+<span class="sd">    front-end&quot;&quot;&quot;</span>
+    <span class="n">logp</span> <span class="o">=</span> <span class="n">log</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)</span>
+    <span class="n">sourcefile</span><span class="p">,</span> <span class="n">logfile</span> <span class="o">=</span> <span class="n">logp</span><span class="p">[</span><span class="o">-</span><span class="mi">4</span><span class="p">],</span> <span class="n">logp</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="s2">&quot;()&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">pjoin</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">logfile</span><span class="p">),</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">ef</span><span class="p">:</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="n">ef</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+    <span class="n">directory</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">sourcefile</span><span class="p">)</span>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">encodebytes</span><span class="p">(</span><span class="n">message</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+    <span class="n">message</span> <span class="o">=</span> <span class="n">message</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">send</span><span class="p">(</span><span class="s2">&quot;stderr:&quot;</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">pjoin</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">directory</span><span class="p">)),</span> <span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span></div>
+
+
+<span class="c1"># INFO Candidates for %v:%v</span>
+<div class="viewcode-block" id="waiting_filter"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.waiting_filter">[docs]</a><span class="k">def</span> <span class="nf">waiting_filter</span><span class="p">(</span><span class="n">log</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Match the message PMJQ emits when it knows how many files are</span>
+<span class="sd">    waiting for processing&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="s2">&quot;INFO Candidates for &quot;</span> <span class="ow">in</span> <span class="n">log</span></div>
+
+
+<span class="k">def</span> <span class="nf">waiting_handler</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
+    <span class="n">directory</span><span class="p">,</span> <span class="n">nb</span> <span class="o">=</span> <span class="n">log</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">2</span><span class="p">:]</span>
+    <span class="n">send</span><span class="p">(</span><span class="s2">&quot;waiting:&quot;</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">pjoin</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">directory</span><span class="p">)),</span> <span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="n">nb</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="move_and_print"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.move_and_print">[docs]</a><span class="k">def</span> <span class="nf">move_and_print</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">pattern</span><span class="p">,</span> <span class="n">outdir</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">ch</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Print the name of files created in directory</span>
+<span class="sd">    that contain pattern.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO Multiple watches instead of for loop?</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="n">inotify</span><span class="o">.</span><span class="n">adapters</span><span class="o">.</span><span class="n">Inotify</span><span class="p">()</span>
+    <span class="n">i</span><span class="o">.</span><span class="n">add_watch</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">event</span> <span class="ow">in</span> <span class="n">i</span><span class="o">.</span><span class="n">event_gen</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">event</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="p">(</span><span class="n">header</span><span class="p">,</span> <span class="n">type_names</span><span class="p">,</span> <span class="n">watch_path</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span> <span class="o">=</span> <span class="n">event</span>
+        <span class="c1"># Look for PMJQ lock release</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">pattern</span> <span class="ow">in</span> <span class="n">filename</span>
+                <span class="ow">and</span> <span class="n">filename</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.lock&quot;</span><span class="p">)</span>
+                <span class="ow">and</span> <span class="s1">&#39;IN_DELETE&#39;</span> <span class="ow">in</span> <span class="n">type_names</span><span class="p">):</span>
+            <span class="n">filpath</span> <span class="o">=</span> <span class="n">pjoin</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">filename</span><span class="p">[:</span><span class="o">-</span><span class="mi">5</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filpath</span><span class="p">):</span>
+                <span class="k">assert</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">outdir</span><span class="p">),</span> <span class="s2">&quot;No DL folder!&quot;</span>
+                <span class="n">newname</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">-</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">prefix</span><span class="p">,</span> <span class="n">filename</span><span class="p">[:</span><span class="o">-</span><span class="mi">5</span><span class="p">])</span>
+                <span class="n">outfile</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">pjoin</span><span class="p">(</span><span class="n">outdir</span><span class="p">,</span> <span class="n">newname</span><span class="p">))</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">filpath</span><span class="p">,</span> <span class="n">outfile</span><span class="p">)</span>
+                <span class="n">send</span><span class="p">(</span><span class="s2">&quot;output:&quot;</span> <span class="o">+</span> <span class="n">pjoin</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">newname</span><span class="p">))</span>
+                <span class="n">ch</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="s2">&quot;done&quot;</span><span class="p">)</span>
+                <span class="k">return</span></div>
+
+
+<div class="viewcode-block" id="handle_inputs"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.handle_inputs">[docs]</a><span class="k">def</span> <span class="nf">handle_inputs</span><span class="p">(</span><span class="n">inputs</span><span class="p">,</span> <span class="n">job_id</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Receive file inputs (name and data) and send them in the</span>
+<span class="sd">    appropriate folders</span>
+
+<span class="sd">    :param inputs: The list of input folders</span>
+<span class="sd">    :param job_id: A unique prefix to avoid name collisions</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">received_so_far</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="p">{})</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span><span class="o">*</span><span class="mi">2</span><span class="p">):</span>  <span class="c1"># Name + Data</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="nb">input</span><span class="p">()</span>
+        <span class="n">msg_type</span><span class="p">,</span> <span class="n">dirname</span><span class="p">,</span> <span class="n">content</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;:&quot;</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">msg_type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">),</span> <span class="s2">&quot;Wrong type&quot;</span>
+        <span class="n">received_so_far</span><span class="p">[</span><span class="n">dirname</span><span class="p">][</span><span class="n">msg_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">content</span>
+        <span class="k">if</span> <span class="s2">&quot;name&quot;</span> <span class="ow">in</span> <span class="n">received_so_far</span><span class="p">[</span><span class="n">dirname</span><span class="p">]</span> \
+           <span class="ow">and</span> <span class="s2">&quot;data&quot;</span> <span class="ow">in</span> <span class="n">received_so_far</span><span class="p">[</span><span class="n">dirname</span><span class="p">]:</span>
+            <span class="n">fname</span> <span class="o">=</span> <span class="n">job_id</span> <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span>
+                <span class="n">received_so_far</span><span class="p">[</span><span class="n">dirname</span><span class="p">][</span><span class="s1">&#39;name&#39;</span><span class="p">])[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">decodebytes</span><span class="p">(</span>
+                    <span class="n">received_so_far</span><span class="p">[</span><span class="n">dirname</span><span class="p">][</span><span class="s1">&#39;data&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf8&#39;</span><span class="p">)))</span>
+                <span class="n">tname</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">tname</span><span class="p">,</span> <span class="n">pjoin</span><span class="p">(</span><span class="n">dirname</span><span class="p">,</span> <span class="n">fname</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="find_leaves"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.find_leaves">[docs]</a><span class="k">def</span> <span class="nf">find_leaves</span><span class="p">(</span><span class="n">trans</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Return the &#39;leaves&#39; of the DAG formed by the given transitions.</span>
+
+<span class="sd">    The transitions form a Directed Acyclic Graph. We call leaves</span>
+<span class="sd">    those nodes whose edges are all of the same direction.</span>
+
+<span class="sd">    Nodes with only outgoing edges are input nodes.</span>
+<span class="sd">    Nodes with only incoming edges are output nodes.</span>
+
+<span class="sd">    Nodes with both incoming and outgoing edges are</span>
+<span class="sd">    intermediary nodes who are supposed to keep files just</span>
+<span class="sd">    long enough for them to be processed by the next transition.</span>
+
+<span class="sd">    This may not be true if the dataflow designer played with the</span>
+<span class="sd">    filenames regexes and patterns in a way that will make files</span>
+<span class="sd">    permanently stay in an intermediary node.</span>
+<span class="sd">    We discourage such designs as stupidly unclear.</span>
+
+<span class="sd">    :param trans: The transitions</span>
+<span class="sd">    :return: Three lists: input directories, output directories, log files</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">inputs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">sum</span><span class="p">([</span><span class="n">t</span><span class="p">[</span><span class="s1">&#39;inputs&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">trans</span><span class="p">],</span> <span class="p">[]))</span>
+    <span class="n">outputs</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">sum</span><span class="p">([</span><span class="n">t</span><span class="p">[</span><span class="s1">&#39;outputs&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">trans</span><span class="p">],</span> <span class="p">[]))</span>
+    <span class="n">logs</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span><span class="p">[</span><span class="s1">&#39;log&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">trans</span> <span class="k">if</span> <span class="s1">&#39;log&#39;</span> <span class="ow">in</span> <span class="n">t</span><span class="p">]</span>
+
+    <span class="n">inputs</span> <span class="o">=</span> <span class="p">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">smart_unquote</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
+              <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">inputs</span><span class="p">}</span>
+    <span class="n">outputs</span> <span class="o">=</span> <span class="p">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">smart_unquote</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
+               <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">outputs</span><span class="p">}</span>
+    <span class="n">logs</span> <span class="o">=</span> <span class="p">{</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">smart_unquote</span><span class="p">(</span><span class="n">i</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">logs</span><span class="p">}</span>
+    <span class="k">return</span> <span class="n">inputs</span> <span class="o">-</span> <span class="n">outputs</span><span class="p">,</span> <span class="n">outputs</span> <span class="o">-</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">logs</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../index.html#pmjqtools.pmjq_sff.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Backend for the Web interface to PMJQ.</span>
+
+<span class="sd">    Usage:</span>
+<span class="sd">        pmjq_sff [--exec=&lt;exec.py&gt;] --dl-folder=&lt;folder&gt;</span>
+<span class="sd">        [--root=&lt;root&gt;] --dl-url=&lt;url&gt; &lt;eval&gt;</span>
+
+<span class="sd">    Options:</span>
+<span class="sd">      --exec=&lt;exec.py&gt;      Specify a Python file to be exec()d before &lt;eval&gt;</span>
+<span class="sd">                            is eval()ed.</span>
+<span class="sd">      --root=&lt;root&gt;         Working directory to evaluate other relative paths</span>
+<span class="sd">                            from.</span>
+<span class="sd">      --dl-folder=&lt;folder&gt;  Directory where the output files will be made</span>
+<span class="sd">                            available to the users.</span>
+<span class="sd">      --dl-url=&lt;url&gt;        Publicly accessible URL of &lt;folder&gt;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">root</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">abspath</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="s1">&#39;--root&#39;</span><span class="p">]))</span> \
+        <span class="k">if</span> <span class="n">args</span><span class="p">[</span><span class="s1">&#39;--root&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isabs</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="s1">&#39;--dl-folder&#39;</span><span class="p">]):</span>
+        <span class="n">dlfolder</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="s1">&#39;--dl-folder&#39;</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">root</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">dlfolder</span> <span class="o">=</span> <span class="n">pjoin</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">args</span><span class="p">[</span><span class="s1">&#39;--dl-folder&#39;</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">dlfolder</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">args</span><span class="p">(</span><span class="s1">&#39;--dl-folder&#39;</span><span class="p">))</span>
+
+    <span class="n">dlurl</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="s1">&#39;--dl-url&#39;</span><span class="p">]</span>
+    <span class="n">nonce</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10000</span><span class="p">))</span><span class="o">.</span><span class="n">zfill</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+    <span class="c1"># The job id is the name of the file, the extension will come from the user</span>
+    <span class="n">job_id</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span> <span class="o">+</span> <span class="s2">&quot;_&quot;</span> <span class="o">+</span> <span class="n">nonce</span>
+
+    <span class="n">inputs</span><span class="p">,</span> <span class="n">outputs</span><span class="p">,</span> <span class="n">logs</span> <span class="o">=</span> <span class="n">run_on_transitions_from_cli</span><span class="p">(</span>
+        <span class="n">args</span><span class="p">,</span> <span class="n">find_leaves</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">indir</span> <span class="ow">in</span> <span class="n">inputs</span><span class="p">:</span>  <span class="c1"># Write input files</span>
+        <span class="k">assert</span> <span class="s1">&#39;:&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">indir</span><span class="p">,</span> \
+            <span class="s2">&quot;FIXME: (later) &#39;:&#39; in dir names not supported yet&quot;</span>
+        <span class="n">send</span><span class="p">(</span><span class="s2">&quot;input:&quot;</span> <span class="o">+</span> <span class="n">indir</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Watching log files: &quot;</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">logs</span><span class="p">)</span><span class="o">+</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">logfile</span> <span class="ow">in</span> <span class="n">logs</span><span class="p">:</span>
+        <span class="n">go</span><span class="p">(</span><span class="n">tail_filter_and_process</span><span class="p">,</span> <span class="n">fname</span><span class="o">=</span><span class="n">logfile</span><span class="p">,</span>
+           <span class="n">filterfunc</span><span class="o">=</span><span class="n">get_default_filter</span><span class="p">(</span><span class="n">job_id</span><span class="p">),</span>
+           <span class="n">handlerfunc</span><span class="o">=</span><span class="n">default_handler</span><span class="p">)</span>
+        <span class="n">go</span><span class="p">(</span><span class="n">tail_filter_and_process</span><span class="p">,</span> <span class="n">fname</span><span class="o">=</span><span class="n">logfile</span><span class="p">,</span>
+           <span class="n">filterfunc</span><span class="o">=</span><span class="n">waiting_filter</span><span class="p">,</span>
+           <span class="n">handlerfunc</span><span class="o">=</span><span class="n">waiting_handler</span><span class="p">,</span>
+           <span class="n">root</span><span class="o">=</span><span class="n">root</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">go</span><span class="p">(</span><span class="n">tail_filter_and_process</span><span class="p">,</span> <span class="n">fname</span><span class="o">=</span><span class="n">logfile</span><span class="p">,</span>
+           <span class="n">filterfunc</span><span class="o">=</span><span class="n">get_error_filter</span><span class="p">(</span><span class="n">job_id</span><span class="p">),</span>
+           <span class="n">handlerfunc</span><span class="o">=</span><span class="n">error_handler</span><span class="p">,</span>
+           <span class="n">root</span><span class="o">=</span><span class="n">root</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">ch</span> <span class="o">=</span> <span class="n">Chan</span><span class="p">()</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;Watching output dirs: &quot;</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">outputs</span><span class="p">)</span><span class="o">+</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">outdir</span> <span class="ow">in</span> <span class="n">outputs</span><span class="p">:</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">outdir</span><span class="p">))</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">go</span><span class="p">(</span><span class="n">move_and_print</span><span class="p">,</span> <span class="n">outdir</span><span class="p">,</span> <span class="n">job_id</span><span class="p">,</span>
+           <span class="n">dlfolder</span><span class="p">,</span> <span class="n">dlurl</span><span class="p">,</span> <span class="n">ch</span><span class="p">,</span> <span class="n">prefix</span><span class="p">)</span>
+    <span class="n">go</span><span class="p">(</span><span class="n">handle_inputs</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">job_id</span><span class="p">)</span>
+    <span class="c1"># Wait for output to be processed</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">outputs</span><span class="p">)):</span>
+        <span class="n">ch</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+    <span class="k">return</span></div>
+
+
+<span class="k">def</span> <span class="nf">launch</span><span class="p">():</span>
+    <span class="n">arguments</span> <span class="o">=</span> <span class="n">docopt</span><span class="p">(</span><span class="n">main</span><span class="o">.</span><span class="vm">__doc__</span><span class="p">)</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">arguments</span><span class="p">)</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2016, Edouard Klein.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

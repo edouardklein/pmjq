@@ -40,14 +40,721 @@
 <p>A more complete documentation has yet to be written.</p>
 <div class="section" id="installation-from-sources">
 <h2>Installation from sources<a class="headerlink" href="#installation-from-sources" title="Permalink to this headline">¶</a></h2>
-<p>The only hard dependency for building the package is the  <cite>Go programming language &lt;https://golang.org/doc/install&gt;</cite>. Optional dependencies include:</p>
+<p>The only hard dependency for building the package is the  <a class="reference external" href="https://golang.org/doc/install">Go programming language</a>. Optional dependencies include:</p>
 <ul class="simple">
-<li><cite>lnav &lt;http://lnav.org/&gt;</cite></li>
-<li><cite>sshfs &lt;https://github.com/libfuse/sshfs&gt;</cite></li>
-<li><cite>golint &lt;https://godoc.org/golang.org/x/lint/golint&gt;</cite></li>
+<li><a class="reference external" href="http://lnav.org/">lnav</a></li>
+<li><a class="reference external" href="https://github.com/libfuse/sshfs">sshfs</a></li>
+<li><a class="reference external" href="https://godoc.org/golang.org/x/lint/golint">golint</a></li>
 <li>Python 3</li>
+<li><a class="reference external" href="http://entrproject.org/">entr</a></li>
+<li><a class="reference external" href="http://websocketd.com/">websocketd</a></li>
 </ul>
 <p>Clone the repo and run <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install</span></code> in it. To only install the tool and none of its supporting components, run <code class="docutils literal notranslate"><span class="pre">go</span> <span class="pre">install</span></code> instead.</p>
+</div>
+<div class="section" id="basic-usage">
+<h2>Basic Usage<a class="headerlink" href="#basic-usage" title="Permalink to this headline">¶</a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>pmjq.
+
+	Usage: pmjq  [--quit-when-empty] --input=&lt;inpattern&gt;... [--invariant=&lt;re_template&gt;] &lt;cmdtemplate&gt; --output=&lt;outtemplate&gt;... [--stderr=&lt;logtemplate&gt;] [--error=&lt;errortemplate&gt;...]
+	       pmjq -h | --help
+	       pmjq --version
+
+  Options:
+     --help -h                  Show this message
+     --version                  Show version information and exit
+     --quit-when-empty          Exit with 0 status when the input dir is empty
+     --input=&lt;inpattern&gt;        The regex a file must match in order to be processed
+     --invariant=&lt;re_template&gt;  Must only be specified if multiple input patterns are passed. Iff the regex template expansion is the same for all --input matches, the matching files are processed together.
+     --output=&lt;outtemplate&gt;     The name of the output file(s) are the expansion of this(ese) template(s), using the DSL of Golang&#39;s text/template. Templates ending in / when there is only one input and one output will result in the input file&#39;s name being used as the output file&#39;s name.
+     --stderr=&lt;logtemplate&gt;     The name of the log file where each instance of cmd will dump it stderr is the expansion of this template. Templates ending in / will result in the first input file&#39;s name being used as the log file&#39;s name.
+     --error=&lt;error-dir&gt;        If specified, there must be as many as there are --input. If specified, pmjq does not crash on error but move the incriminated file(s) to their new name(s) given by the expansion of these template(s). Templates ending in / when there is only one input and one output will result in the input file&#39;s name being used as the error file&#39;s name.
+</pre></div>
+</div>
+</div>
+<div class="section" id="module-pmjqtools.dsl">
+<span id="domain-specific-language"></span><h2>Domain Specific Language<a class="headerlink" href="#module-pmjqtools.dsl" title="Permalink to this headline">¶</a></h2>
+<p>We have developped a DSL to help users design complex data processing
+pipelines.</p>
+<p>The atomic unit of a data processing pipeline is the
+<em>transition</em>: a single command that defines a step in
+the pipeline.</p>
+<p>Our DSL consists of Python dictionaries (one per transition)
+that roughly maps to the command line options of the pmjq executable
+(<a class="reference internal" href="#basic-usage">Basic Usage</a>).</p>
+<div class="section" id="examples">
+<h3>Examples<a class="headerlink" href="#examples" title="Permalink to this headline">¶</a></h3>
+<div class="section" id="simplest-example">
+<h4>Simplest example<a class="headerlink" href="#simplest-example" title="Permalink to this headline">¶</a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">smallest_transition</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;stdin&#39;</span><span class="p">:</span> <span class="s1">&#39;/tmp/input/&#39;</span><span class="p">,</span>
+                       <span class="s1">&#39;stdout&#39;</span><span class="p">:</span> <span class="s1">&#39;/tmp/output/&#39;</span><span class="p">,</span>
+                       <span class="s1">&#39;cmd&#39;</span><span class="p">:</span> <span class="s1">&#39;sha256sum&#39;</span><span class="p">}</span>
+</pre></div>
+</div>
+<div class="figure">
+<img alt="A visualization of the smallest possible transition" src="_images/smallest_transition.png" />
+</div>
+<p>This is the simplest example of a transition: every time a file is dropped
+in /tmp/input, its sha256sum will be computed and put in a file of the same
+name in /tmp/output. The input file will be deleted.</p>
+<p>This code can be saved in, e.g. a <code class="docutils literal notranslate"><span class="pre">transition.py</span></code> file and put under version
+control.
+One can use all the functionalities of Python to dynamically determine
+what to put in the dictionaries (e.g. decide, given the current load, whether
+to have a transition work from a disk or from a RAM filesystem).</p>
+</div>
+<div class="section" id="most-complete-example">
+<h4>Most complete example<a class="headerlink" href="#most-complete-example" title="Permalink to this headline">¶</a></h4>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">complete_transition</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;inputs&#39;</span><span class="p">:</span>
+                       <span class="p">[</span><span class="s1">&#39;${PLAYGROUND}/input0/(?P&lt;id&gt;...)_(?P&lt;suffix&gt;.*)\.txt&#39;</span><span class="p">,</span>
+                        <span class="s1">&#39;${PLAYGROUND}/input1/(?P&lt;prefix&gt;.*)_(?P&lt;id&gt;...)\.txt&#39;</span>
+                        <span class="p">],</span>
+                       <span class="s1">&#39;errors&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;${PLAYGROUND}/error0/{{.Input 0}}&#39;</span><span class="p">,</span>
+                                  <span class="s1">&#39;${PLAYGROUND}/error1/{{.Input 1}}&#39;</span><span class="p">],</span>
+                       <span class="s1">&#39;stderr&#39;</span><span class="p">:</span> <span class="s1">&#39;${PLAYGROUND}/log/{{.Invariant}}.log&#39;</span><span class="p">,</span>
+                       <span class="s1">&#39;log&#39;</span><span class="p">:</span> <span class="s1">&#39;${PLAYGROUND}/log/Arbitrary.log&#39;</span><span class="p">,</span>
+                       <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="s1">&#39;Arbitrary&#39;</span><span class="p">,</span>
+                       <span class="s1">&#39;side_effects&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;Side_effect1&#39;</span><span class="p">,</span>
+                                        <span class="s1">&#39;Side_effect2&#39;</span><span class="p">],</span>
+                       <span class="s1">&#39;outputs&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;${PLAYGROUND}/outputA/{{.NamedMatches.id}}&#39;</span>
+                                   <span class="s1">&#39;_{{.NamedMatches.prefix}}_&#39;</span>
+                                   <span class="s1">&#39;{{.NamedMatches.suffix}}.txt&#39;</span><span class="p">,</span>
+                                   <span class="s1">&#39;${PLAYGROUND}/outputB/{{.Invariant}}.txt&#39;</span><span class="p">],</span>
+                       <span class="s1">&#39;quit_empty&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span>
+                       <span class="s1">&#39;invariant&#39;</span><span class="p">:</span> <span class="s1">&#39;$id&#39;</span><span class="p">,</span>
+                       <span class="s1">&#39;cmd&#39;</span><span class="p">:</span> <span class="s1">&#39;sha256sum&#39;</span><span class="p">}</span>
+</pre></div>
+</div>
+<div class="figure">
+<img alt="A visualization of the most complete transition" src="_images/complete_transition.png" />
+</div>
+<dl class="docutils">
+<dt>This transition uses all the advanced features of PMJQ:</dt>
+<dd><ul class="first last simple">
+<li><dl class="first docutils">
+<dt>Mutliple inputs</dt>
+<dd><ul class="first last">
+<li>Files in the two input dirs are matched with one another depending      on part of their filenames, as specified in their respective regexes.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Multiple outputs</dt>
+<dd><ul class="first last">
+<li>Whose filenames depend on the input filenames</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li>Error dirs to copy the input files to in case of a failure of the command</li>
+<li><dl class="first docutils">
+<dt>Documented side-effects of the command</dt>
+<dd><ul class="first last">
+<li>PMJQ can not possibly know what the command it is running does.      The side effects are just here for documentation purposes.
+As a rule of thumb, one should avoid them.</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="first docutils">
+<dt>Log dir to store the standard error of the command</dt>
+<dd><ul class="first last">
+<li>The log file’s name depends on both imput file’s names</li>
+</ul>
+</dd>
+</dl>
+</li>
+<li>PMJQ will stop when the input dirs are empty (useful for tests or one-off   processing)</li>
+</ul>
+</dd>
+</dl>
+</div>
+</div>
+<div class="section" id="bash-script-generation">
+<h3>Bash script generation<a class="headerlink" href="#bash-script-generation" title="Permalink to this headline">¶</a></h3>
+<p>One can generate a the bash command that will start a transition with:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pmjqtools.dsl</span> <span class="kn">import</span> <span class="n">pmjq_command</span>
+<span class="n">transition</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;stdin&#39;</span><span class="p">:</span> <span class="s1">&#39;/tmp/input/&#39;</span><span class="p">,</span>
+              <span class="s1">&#39;stdout&#39;</span><span class="p">:</span> <span class="s1">&#39;/tmp/output/&#39;</span><span class="p">,</span>
+              <span class="s1">&#39;cmd&#39;</span><span class="p">:</span> <span class="s1">&#39;sha256sum&#39;</span><span class="p">}</span>
+<span class="k">print</span><span class="p">(</span><span class="n">pmjq_command</span><span class="p">(</span><span class="n">transition</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>Or, as a one-liner:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ pmjq_cmd --exec smallest_transition.py &#39;[smallest_transition]&#39;
+pmjq --input=/tmp/input/ sha256sum --output=/tmp/output/
+</pre></div>
+</div>
+</div>
+<div class="section" id="dataflow-visualization">
+<h3>DataFlow Visualization<a class="headerlink" href="#dataflow-visualization" title="Permalink to this headline">¶</a></h3>
+<p>The pmjq_viz command can be used to generate a .dot file that can be further
+processed as an image.</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ pmjq_viz --exec smallest_transition.py &#39;[smallest_transition]&#39;
+digraph transitions {
+    rankdir = TB;
+    splines=ortho;
+    node[penwidth=2.0];
+
+{ &quot;dir_/tmp/input&quot; [shape=&quot;oval&quot;, color=&quot;blue&quot;, label=&quot;/tmp/input&quot;]}
+-&gt;
+{&quot;sha256sum&quot; [shape=&quot;box&quot;, color=&quot;green&quot;, label=&quot;sha256sum&quot;]}
+[arrowhead=&quot;normal&quot;, style=&quot;&quot;,color=&quot;blue&quot;,weight=10];
+
+{ &quot;sha256sum&quot; [shape=&quot;box&quot;, color=&quot;green&quot;, label=&quot;sha256sum&quot;]}
+-&gt;
+{&quot;dir_/tmp/output&quot; [shape=&quot;oval&quot;, color=&quot;blue&quot;, label=&quot;/tmp/output&quot;]}
+[arrowhead=&quot;normal&quot;, style=&quot;&quot;,color=&quot;blue&quot;,weight=10];
+}
+</pre></div>
+</div>
+<p>Using <cite>entr</cite>, one can make change to one or more transition and visualize the
+changes in near real-time.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">$picviewer_with_autoreload</span> smallest_transition.png<span class="p">&amp;</span>
+<span class="nb">echo</span> *.py <span class="p">|</span> entr sh -c <span class="s2">&quot;pmjq_viz --exec smallest_transition.py    &#39;[smallest_transition]&#39;     | dot -Tpng &gt; smallest_transition.png&quot;</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="remote-vs-local-usage">
+<h3>Remote vs. local usage<a class="headerlink" href="#remote-vs-local-usage" title="Permalink to this headline">¶</a></h3>
+<p>If one only uses the DSL to generate commands and visualize the pipeline,
+then the <cite>pmjqtools</cite>
+package need only be installed on the designer’s workstation. The
+computer that will actually run the pipeline only need the
+static <cite>pmjq</cite> binary and a way to remotely run the generated commands
+(typically <cite>ssh</cite>).</p>
+<p>It can be easier to use the more advanced tools described in
+<a class="reference internal" href="#module-pmjqtools.tools" title="pmjqtools.tools"><code class="xref py py-mod docutils literal notranslate"><span class="pre">pmjqtools.tools</span></code></a> on the remote machine, with the drawback of
+having to install the <cite>pmjqtools</cite> package on the remote machine.</p>
+</div>
+<div class="section" id="dsl-api-reference">
+<h3>DSL API Reference<a class="headerlink" href="#dsl-api-reference" title="Permalink to this headline">¶</a></h3>
+<dl class="function">
+<dt id="pmjqtools.dsl.cmd">
+<code class="descclassname">pmjqtools.dsl.</code><code class="descname">cmd</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/dsl.html#cmd"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.dsl.cmd" title="Permalink to this definition">¶</a></dt>
+<dd><p>pmjq_cmd: print the pmjq commands that will run the given transitions.</p>
+<p>Usage:
+pmjq_cmd [–exec=&lt;exec.py&gt;] &lt;eval&gt;</p>
+<dl class="docutils">
+<dt>Options:</dt>
+<dd><table class="first last docutils option-list" frame="void" rules="none">
+<col class="option" />
+<col class="description" />
+<tbody valign="top">
+<tr><td class="option-group" colspan="2">
+<kbd><span class="option">--exec=<var>&lt;exec.py&gt;</var></span></kbd></td>
+</tr>
+<tr><td>&#160;</td><td>Specify a Python file to be exec()d before &lt;eval&gt;
+is eval()ed</td></tr>
+</tbody>
+</table>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.dsl.dot_nodes_and_edge">
+<code class="descclassname">pmjqtools.dsl.</code><code class="descname">dot_nodes_and_edge</code><span class="sig-paren">(</span><em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/dsl.html#dot_nodes_and_edge"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.dsl.dot_nodes_and_edge" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the dot code for two nodes and an edge</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.dsl.normalize">
+<code class="descclassname">pmjqtools.dsl.</code><code class="descname">normalize</code><span class="sig-paren">(</span><em>transition</em>, <em>root=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/dsl.html#normalize"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.dsl.normalize" title="Permalink to this definition">¶</a></dt>
+<dd><p>Allow omitting id and the use of shortcuts like stdin, stdout and error</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.dsl.pmjq_command">
+<code class="descclassname">pmjqtools.dsl.</code><code class="descname">pmjq_command</code><span class="sig-paren">(</span><em>transition</em>, <em>redirect='&amp;&gt;'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/dsl.html#pmjq_command"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.dsl.pmjq_command" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the shell command that will make pmjq run the given transition</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.dsl.run_on_transitions_from_cli">
+<code class="descclassname">pmjqtools.dsl.</code><code class="descname">run_on_transitions_from_cli</code><span class="sig-paren">(</span><em>arguments</em>, <em>func</em>, <em>root=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/dsl.html#run_on_transitions_from_cli"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.dsl.run_on_transitions_from_cli" title="Permalink to this definition">¶</a></dt>
+<dd><p>Call func with the transitions given on the cli.</p>
+<p>The user can specify the transitions using an optional &lt;exec.py&gt;
+argument, which specify some code to run (typically setting a variable),
+and a &lt;eval&gt; argument, whose eval()uation gives the transitions.</p>
+<p>In Python 3, exec() can no longer modify the local variables:
+<a class="reference external" href="https://stackoverflow.com/questions/1463306/how-does-exec-work-with-locals">https://stackoverflow.com/questions/1463306/how-does-exec-work-with-locals</a></p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.dsl.trans2dot">
+<code class="descclassname">pmjqtools.dsl.</code><code class="descname">trans2dot</code><span class="sig-paren">(</span><em>transition</em>, <em>include_logs=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/dsl.html#trans2dot"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.dsl.trans2dot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Transform a pmjq transition into a dot string.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>transition</strong> – The transition to convert</li>
+<li><strong>include_logs</strong> – Include the ‘logs’ field</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">The dot string, and the list of ‘error’ fields    (for further processing)</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.dsl.transitions2dot">
+<code class="descclassname">pmjqtools.dsl.</code><code class="descname">transitions2dot</code><span class="sig-paren">(</span><em>transitions</em>, <em>group=True</em>, <em>logs=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/dsl.html#transitions2dot"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.dsl.transitions2dot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert a pmjq transition list into a dot string.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>transitions</strong> – The list of transitions</li>
+<li><strong>group</strong> – Group errors in a cluster</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">The dot string</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.dsl.viz">
+<code class="descclassname">pmjqtools.dsl.</code><code class="descname">viz</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/dsl.html#viz"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.dsl.viz" title="Permalink to this definition">¶</a></dt>
+<dd><p>pmjq_viz: Visualize a list of transition as a dot graph</p>
+<p>Usage:
+pmjq_viz [–exec=&lt;exec.py&gt;] [–logs] &lt;eval&gt;</p>
+<dl class="docutils">
+<dt>Options:</dt>
+<dd><table class="first last docutils option-list" frame="void" rules="none">
+<col class="option" />
+<col class="description" />
+<tbody valign="top">
+<tr><td class="option-group" colspan="2">
+<kbd><span class="option">--exec=<var>&lt;exec.py&gt;</var></span></kbd></td>
+</tr>
+<tr><td>&#160;</td><td>Specify a Python file to be exec()d before &lt;eval&gt;
+is eval()ed.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--logs</span></kbd></td>
+<td>Draw the logs directories.</td></tr>
+</tbody>
+</table>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</div>
+<div class="section" id="module-pmjqtools.tools">
+<span id="helper-tools"></span><h2>Helper tools<a class="headerlink" href="#module-pmjqtools.tools" title="Permalink to this headline">¶</a></h2>
+<p>We have developped some tools to make running <cite>pmjq</cite> dataflows
+easier:</p>
+<ul class="simple">
+<li>A tool to create the directories a list of transitions need: <a class="reference internal" href="#pmjqtools.tools.mkendpoints" title="pmjqtools.tools.mkendpoints"><code class="xref py py-func docutils literal notranslate"><span class="pre">mkendpoints()</span></code></a></li>
+<li>A tool to start (<a class="reference internal" href="#pmjqtools.tools.start" title="pmjqtools.tools.start"><code class="xref py py-func docutils literal notranslate"><span class="pre">start()</span></code></a>) all the transitions, using <cite>tmux</cite>.</li>
+</ul>
+<div class="admonition-todo admonition" id="index-0">
+<p class="first admonition-title">Todo</p>
+<p class="last">Create pmjq_restart, pmjq_stop, and pmjq_status using the corresponding
+daemux functions.</p>
+</div>
+<dl class="function">
+<dt id="pmjqtools.tools.create_endpoints">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">create_endpoints</code><span class="sig-paren">(</span><em>transitions</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#create_endpoints"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.create_endpoints" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create the directories needed by the given transitions</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.daemux_start">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">daemux_start</code><span class="sig-paren">(</span><em>transitions</em>, <em>session='pmjq'</em>, <em>shell='sh'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#daemux_start"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.daemux_start" title="Permalink to this definition">¶</a></dt>
+<dd><p>Instantiate the transitions, each in its own tmux window</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.mkendpoints">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">mkendpoints</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#mkendpoints"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.mkendpoints" title="Permalink to this definition">¶</a></dt>
+<dd><p>pmjq_mkendpoints: Create all the directories needed by the given
+transitions.</p>
+<p>Usage:
+pmjq_mkendpoints [–exec=&lt;exec.py&gt;] &lt;eval&gt;</p>
+<dl class="docutils">
+<dt>Options:</dt>
+<dd><table class="first last docutils option-list" frame="void" rules="none">
+<col class="option" />
+<col class="description" />
+<tbody valign="top">
+<tr><td class="option-group" colspan="2">
+<kbd><span class="option">--exec=<var>&lt;exec.py&gt;</var></span></kbd></td>
+</tr>
+<tr><td>&#160;</td><td>Specify a Python file to be exec()d before &lt;eval&gt;
+is eval()ed</td></tr>
+</tbody>
+</table>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.tools.start">
+<code class="descclassname">pmjqtools.tools.</code><code class="descname">start</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/tools.html#start"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.tools.start" title="Permalink to this definition">¶</a></dt>
+<dd><p>pmjq_start: Instantiate the transitions, each in its own tmux window.</p>
+<p>Usage:
+pmjq_start [–exec=&lt;exec.py&gt;] [–session=&lt;session&gt;] [–shell=&lt;shell&gt;]
+&lt;eval&gt;</p>
+<dl class="docutils">
+<dt>Options:</dt>
+<dd><table class="first last docutils option-list" frame="void" rules="none">
+<col class="option" />
+<col class="description" />
+<tbody valign="top">
+<tr><td class="option-group" colspan="2">
+<kbd><span class="option">--exec=<var>&lt;exec.py&gt;</var></span></kbd></td>
+</tr>
+<tr><td>&#160;</td><td>Specify a Python file to be exec()d before &lt;eval&gt;
+is eval()ed</td></tr>
+<tr><td class="option-group" colspan="2">
+<kbd><span class="option">--session=<var>&lt;session&gt;</var></span></kbd></td>
+</tr>
+<tr><td>&#160;</td><td>Specify the tmux session the tmuw windows will be
+created in. Defaults to “pmjq”.</td></tr>
+<tr><td class="option-group" colspan="2">
+<kbd><span class="option">--shell=<var>&lt;shell&gt;</var></span></kbd></td>
+</tr>
+<tr><td>&#160;</td><td>Specify the shell the command will be run with.
+Currently only (ba)sh (the default) and fish are
+officially supported.</td></tr>
+</tbody>
+</table>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="user-interface">
+<h2>User Interface<a class="headerlink" href="#user-interface" title="Permalink to this headline">¶</a></h2>
+<p>Dataflow designers should refer to the DSL documentation (<a class="reference internal" href="#module-pmjqtools.dsl" title="pmjqtools.dsl"><code class="xref py py-mod docutils literal notranslate"><span class="pre">pmjqtools.dsl</span></code></a>).
+This section is about the end-users of the dataflow: the people who are going
+to provide the input data and use the output data.</p>
+<div class="section" id="file-system">
+<h3>File system<a class="headerlink" href="#file-system" title="Permalink to this headline">¶</a></h3>
+<p>The basic UI is to mount the input and output directories somewhere in the user’s
+namespace. In the field, we used <cite>sshfs</cite> and <cite>samba</cite> with great success.</p>
+<p>The users then simply drop their files in the input directory or directories, and
+wait for the end-product to appear in the output directory or directories.</p>
+</div>
+<div class="section" id="module-pmjqtools.pmjq_sff">
+<span id="web-ui"></span><h3>Web UI<a class="headerlink" href="#module-pmjqtools.pmjq_sff" title="Permalink to this headline">¶</a></h3>
+<p>Some users are so technologically disabled that they can’t even mount a
+remote
+directory. To help them use the dataflows made and run with <cite>pmjq</cite> we
+developped
+a Web UI. We discourage its use, as for this use case web technologies are
+inferior
+in almost every way to remote filesystems.
+Sadly sometimes empowering the users is not an option and one has to
+dumb the tool down.</p>
+<div class="section" id="usage">
+<h4>Usage<a class="headerlink" href="#usage" title="Permalink to this headline">¶</a></h4>
+<p>The <code class="docutils literal notranslate"><span class="pre">serve</span></code> target of the Makefile gives a quick overview of what you need
+in order to expose the Sigle File Flow (SFF) to the world:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>$ make -C .. -n serve
+make[2]: Entering directory &#39;/home/edouard/Desktop/pmjq&#39;
+# Create or allocate a zone of your FS to be exposed to the outside
+mkdir -p /tmp/sff/dl_zone  # Results will accumulate here
+mkdir -p /tmp/sff/js
+# Populate it with the client code
+cp /usr/share/pmjq/index.html /tmp/sff/
+cp /usr/share/pmjq/js/app.js /tmp/sff/js/
+# Make sure one client can not see the result of another
+echo &quot;Dir listing is forbidden&quot; &gt; /tmp/sff/dl_zone/index.html
+# Create the endpoints of the transitions
+pmjq_mkendpoints  --exec=doc/smallest_transition.py &#39;[smallest_transition]&#39;
+# Actually start pmjq
+$(pmjq_cmd --exec=doc/smallest_transition.py &#39;[smallest_transition]&#39;) &amp; \
+    echo &quot;$!&quot; &gt; &quot;/tmp/sff/pmjq.pid&quot;
+# Launch websocketd. It should be able to handle hundreds of not thousands of
+# simultaneous connections
+websocketd -staticdir=/tmp/sff -port=8080 \
+    pmjq_sff --exec=doc/smallest_transition.py \
+    --dl-folder=/tmp/sff/dl_zone \
+    --dl-url=dl_zone &#39;[smallest_transition]&#39;
+make[2]: Leaving directory &#39;/home/edouard/Desktop/pmjq&#39;
+</pre></div>
+</div>
+<div class="admonition-todo admonition" id="index-1">
+<p class="first admonition-title">Todo</p>
+<ul class="last simple">
+<li>Suggest ways to adapt the web UI to a particular use case.</li>
+<li>FIXME: Make the websocket address in core.cljs paramterizable somehow</li>
+</ul>
+</div>
+</div>
+<div class="section" id="architecture">
+<h4>Architecture<a class="headerlink" href="#architecture" title="Permalink to this headline">¶</a></h4>
+<p>The <cite>pmjq_sff</cite> command (<code class="xref py py-func docutils literal notranslate"><span class="pre">sff()</span></code>) provides the backend for the Web UI.
+It is started by <a class="reference external" href="http://websocketd.com/">websocketd</a>, which will communicate
+with <cite>pmjq_sff</cite> using its standard input and output.</p>
+<p>The front-end is written in ClojureScript. The front-end communicates with
+the backend using the websocket opened by websocketd.</p>
+<div class="admonition-todo admonition" id="index-2">
+<p class="first admonition-title">Todo</p>
+<ul class="last simple">
+<li>Make a pretty picture describing this architecture</li>
+<li>Link to the documentation of the CLJS code</li>
+</ul>
+</div>
+</div>
+<div class="section" id="protocol">
+<h4>Protocol<a class="headerlink" href="#protocol" title="Permalink to this headline">¶</a></h4>
+<p>The font-end and the backend communicate using a text protocol read and written
+from the front-end using a websocket, and from the backend using stdout and
+stdin,
+thanks to the translation made by websocketd.</p>
+<p>Quick description:</p>
+<ul class="simple">
+<li>The protocol is text based.</li>
+<li>All messages are one line long.</li>
+<li>They are typed by a prefix followed by ‘:’</li>
+<li>The front end never initiates an exchange, it only answers the backend.</li>
+<li>Not all messages from the backend require an answer.</li>
+</ul>
+<table border="1" class="colwidths-given docutils" id="id2">
+<caption><span class="caption-text">PMJQ UI protocol</span><a class="headerlink" href="#id2" title="Permalink to this table">¶</a></caption>
+<colgroup>
+<col width="8%" />
+<col width="8%" />
+<col width="8%" />
+<col width="46%" />
+<col width="31%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Direction</th>
+<th class="head">Type</th>
+<th class="head">payload</th>
+<th class="head">Meaning</th>
+<th class="head">Example</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td><code class="docutils literal notranslate"><span class="pre">&lt;-</span></code></td>
+<td>input</td>
+<td>&lt;dir_name&gt;</td>
+<td>The backend informs the frontend that an input directory named       &lt;dir_name&gt; exists.</td>
+<td>&lt;- <code class="docutils literal notranslate"><span class="pre">input:/tmp/audio</span></code></td>
+</tr>
+<tr class="row-odd"><td><code class="docutils literal notranslate"><span class="pre">-&gt;</span></code></td>
+<td>data</td>
+<td>&lt;dir_name&gt;:&lt;file_data_in_base_64&gt;</td>
+<td>The frontend gives the data to be written in &lt;dir_name&gt;</td>
+<td>-&gt; <code class="docutils literal notranslate"><span class="pre">data:/tmp/audio:c7bc...5a93</span></code></td>
+</tr>
+<tr class="row-even"><td><code class="docutils literal notranslate"><span class="pre">-&gt;</span></code></td>
+<td>name</td>
+<td>&lt;dir_name&gt;:&lt;file_name&gt;</td>
+<td>The frontend informs the backend of the name the file had on the user’s       machine.</td>
+<td>-&gt; <code class="docutils literal notranslate"><span class="pre">name:/tmp/audio/:toto.wav</span></code></td>
+</tr>
+<tr class="row-odd"><td><code class="docutils literal notranslate"><span class="pre">&lt;-</span></code></td>
+<td>log</td>
+<td>&lt;one log line&gt;</td>
+<td>All pmjq log lines that are relevant to the user’s files are sent       this way</td>
+<td>&lt;- <code class="docutils literal notranslate"><span class="pre">log:2018/04/30</span> <span class="pre">17:24:14</span> <span class="pre">pmjq.go:747:</span> <span class="pre">000000</span> <span class="pre">free...</span></code></td>
+</tr>
+<tr class="row-even"><td><code class="docutils literal notranslate"><span class="pre">&lt;-</span></code></td>
+<td>waiting</td>
+<td>&lt;dir_name&gt;:&lt;n&gt;</td>
+<td>The back-end tells the front-end that <cite>n</cite> files are waiting to be
+processed in <cite>dir_name</cite>.</td>
+<td>&lt;- <code class="docutils literal notranslate"><span class="pre">waiting:/tmp/input:42</span></code></td>
+</tr>
+<tr class="row-odd"><td><code class="docutils literal notranslate"><span class="pre">&lt;-</span></code></td>
+<td>stderr</td>
+<td>&lt;fname&gt;:&lt;error_message&gt;</td>
+<td>The backend tells the frontend that one command failed a provides        a b64-encoding of the standard error of the command that failed, along       with the file name where this stderr was dumped.</td>
+<td>&lt;- <code class="docutils literal notranslate"><span class="pre">stderr:/tmp/err/toto.txt.log:abd54...g6a67</span></code></td>
+</tr>
+<tr class="row-even"><td><code class="docutils literal notranslate"><span class="pre">&lt;-</span></code></td>
+<td>output</td>
+<td>&lt;URL of a file&gt;</td>
+<td>The backend tells the frontend that an output file is ready to download</td>
+<td>&lt;- <code class="docutils literal notranslate"><span class="pre">output:http://example.com/toto.txt</span></code></td>
+</tr>
+<tr class="row-odd"><td><code class="docutils literal notranslate"><span class="pre">&lt;-</span></code></td>
+<td>done</td>
+<td>N/A</td>
+<td>The backend tells the frontend that the processing is over and no more       messages will be coming.</td>
+<td>&lt;- <code class="docutils literal notranslate"><span class="pre">done</span></code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition-todo admonition" id="index-3">
+<p class="first admonition-title">Todo</p>
+<p>FIXME: This table will quickly get out of sync with the code, which is
+actually split in three places:</p>
+<ul class="simple">
+<li>The Golang code that emits the logs</li>
+<li>The Python code in the Backend that parses those logs and sends the       messages</li>
+<li>The CLJS code in the frontend that receives the messages.</li>
+</ul>
+<p class="last">We should generate the table from a piece of doc much closer to the code.</p>
+</div>
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.default_handler">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">default_handler</code><span class="sig-paren">(</span><em>log</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#default_handler"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.default_handler" title="Permalink to this definition">¶</a></dt>
+<dd><p>Send the log line to the frent-end</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.error_handler">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">error_handler</code><span class="sig-paren">(</span><em>log</em>, <em>root=''</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#error_handler"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.error_handler" title="Permalink to this definition">¶</a></dt>
+<dd><p>Send the error message of the failing data processing command to the
+front-end</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.find_leaves">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">find_leaves</code><span class="sig-paren">(</span><em>trans</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#find_leaves"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.find_leaves" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the ‘leaves’ of the DAG formed by the given transitions.</p>
+<p>The transitions form a Directed Acyclic Graph. We call leaves
+those nodes whose edges are all of the same direction.</p>
+<p>Nodes with only outgoing edges are input nodes.
+Nodes with only incoming edges are output nodes.</p>
+<p>Nodes with both incoming and outgoing edges are
+intermediary nodes who are supposed to keep files just
+long enough for them to be processed by the next transition.</p>
+<p>This may not be true if the dataflow designer played with the
+filenames regexes and patterns in a way that will make files
+permanently stay in an intermediary node.
+We discourage such designs as stupidly unclear.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>trans</strong> – The transitions</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Three lists: input directories, output directories, log files</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.get_default_filter">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">get_default_filter</code><span class="sig-paren">(</span><em>pattern</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#get_default_filter"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.get_default_filter" title="Permalink to this definition">¶</a></dt>
+<dd><p>Look for pattern in the line</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.get_error_filter">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">get_error_filter</code><span class="sig-paren">(</span><em>pattern</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#get_error_filter"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.get_error_filter" title="Permalink to this definition">¶</a></dt>
+<dd><p>Match the log message PMJQ emits when a data processing command fails</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.handle_inputs">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">handle_inputs</code><span class="sig-paren">(</span><em>inputs</em>, <em>job_id</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#handle_inputs"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.handle_inputs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Receive file inputs (name and data) and send them in the
+appropriate folders</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>inputs</strong> – The list of input folders</li>
+<li><strong>job_id</strong> – A unique prefix to avoid name collisions</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.main">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">main</code><span class="sig-paren">(</span><em>args</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#main"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.main" title="Permalink to this definition">¶</a></dt>
+<dd><p>Backend for the Web interface to PMJQ.</p>
+<dl class="docutils">
+<dt>Usage:</dt>
+<dd>pmjq_sff [–exec=&lt;exec.py&gt;] –dl-folder=&lt;folder&gt;
+[–root=&lt;root&gt;] –dl-url=&lt;url&gt; &lt;eval&gt;</dd>
+<dt>Options:</dt>
+<dd><table class="first last docutils option-list" frame="void" rules="none">
+<col class="option" />
+<col class="description" />
+<tbody valign="top">
+<tr><td class="option-group" colspan="2">
+<kbd><span class="option">--exec=<var>&lt;exec.py&gt;</var></span></kbd></td>
+</tr>
+<tr><td>&#160;</td><td>Specify a Python file to be exec()d before &lt;eval&gt;
+is eval()ed.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--root=<var>&lt;root&gt;</var></span></kbd></td>
+<td>Working directory to evaluate other relative paths
+from.</td></tr>
+<tr><td class="option-group" colspan="2">
+<kbd><span class="option">--dl-folder=<var>&lt;folder&gt;</var></span></kbd></td>
+</tr>
+<tr><td>&#160;</td><td>Directory where the output files will be made
+available to the users.</td></tr>
+<tr><td class="option-group">
+<kbd><span class="option">--dl-url=<var>&lt;url&gt;</var></span></kbd></td>
+<td>Publicly accessible URL of &lt;folder&gt;</td></tr>
+</tbody>
+</table>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.move_and_print">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">move_and_print</code><span class="sig-paren">(</span><em>directory</em>, <em>pattern</em>, <em>outdir</em>, <em>url</em>, <em>ch</em>, <em>prefix=''</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#move_and_print"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.move_and_print" title="Permalink to this definition">¶</a></dt>
+<dd><p>Print the name of files created in directory
+that contain pattern.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.send">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">send</code><span class="sig-paren">(</span><em>*args</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#send"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.send" title="Permalink to this definition">¶</a></dt>
+<dd><p>Print and flush. No flush leads to the front- and back-end deadlocking.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.tail_filter_and_process">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">tail_filter_and_process</code><span class="sig-paren">(</span><em>fname</em>, <em>filterfunc</em>, <em>handlerfunc=&lt;function default_handler&gt;</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#tail_filter_and_process"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.tail_filter_and_process" title="Permalink to this definition">¶</a></dt>
+<dd><p>Watch a log file, filter the lines, process the matching lines.</p>
+<p>If the filter function accepts the line, it will be processed by
+the handler function.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>fname</strong> – The file to watch</li>
+<li><strong>filterfunc</strong> – A boolean function of the log line to filter the lines        containing the pattern</li>
+<li><strong>handlerfunc</strong> – A function to be called on each selected line</li>
+<li><strong>kwargs</strong> – Additionnal keywords arguments that will be passed to        handlerfunc</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="pmjqtools.pmjq_sff.waiting_filter">
+<code class="descclassname">pmjqtools.pmjq_sff.</code><code class="descname">waiting_filter</code><span class="sig-paren">(</span><em>log</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pmjqtools/pmjq_sff.html#waiting_filter"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#pmjqtools.pmjq_sff.waiting_filter" title="Permalink to this definition">¶</a></dt>
+<dd><p>Match the message PMJQ emits when it knows how many files are
+waiting for processing</p>
+</dd></dl>
+
+</div>
+</div>
 </div>
 </div>
 
@@ -61,6 +768,30 @@
   <ul>
 <li><a class="reference internal" href="#">PMJQ</a><ul>
 <li><a class="reference internal" href="#installation-from-sources">Installation from sources</a></li>
+<li><a class="reference internal" href="#basic-usage">Basic Usage</a></li>
+<li><a class="reference internal" href="#module-pmjqtools.dsl">Domain Specific Language</a><ul>
+<li><a class="reference internal" href="#examples">Examples</a><ul>
+<li><a class="reference internal" href="#simplest-example">Simplest example</a></li>
+<li><a class="reference internal" href="#most-complete-example">Most complete example</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#bash-script-generation">Bash script generation</a></li>
+<li><a class="reference internal" href="#dataflow-visualization">DataFlow Visualization</a></li>
+<li><a class="reference internal" href="#remote-vs-local-usage">Remote vs. local usage</a></li>
+<li><a class="reference internal" href="#dsl-api-reference">DSL API Reference</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#module-pmjqtools.tools">Helper tools</a></li>
+<li><a class="reference internal" href="#user-interface">User Interface</a><ul>
+<li><a class="reference internal" href="#file-system">File system</a></li>
+<li><a class="reference internal" href="#module-pmjqtools.pmjq_sff">Web UI</a><ul>
+<li><a class="reference internal" href="#usage">Usage</a></li>
+<li><a class="reference internal" href="#architecture">Architecture</a></li>
+<li><a class="reference internal" href="#protocol">Protocol</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -98,7 +829,7 @@
       &copy;2016, Edouard Klein.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.2</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.4</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
       
       |
