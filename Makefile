@@ -1,12 +1,17 @@
 # In fish
 # set -x GOPATH ~/src/go
 # set -x PATH $PATH /usr/local/go/bin $GOPATH/bin
+SHELL := /bin/bash  # We use pushd
 DOC_STAGE_DIR=/tmp/pmjq  # mkdir $DOC_STAGE_DIR's parent, git clone pmjq in $DOC_STAGE_DIR, git checkout gh-pages
 
 all: install test
 
 pmjq: pmjq.go lint
-	go build
+	# "build writes the resulting executable to an output file named 
+        # after [...] the source code directory" We want the output file
+	# to be named pmjq so we have to give the source file name as
+        # an argument
+	go build pmjq.go
 
 install: pmjq
 	sudo python3 setup.py install --old-and-unmanageable
