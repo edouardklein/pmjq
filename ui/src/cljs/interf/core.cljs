@@ -92,7 +92,7 @@
   "Initiate a connection to the websocket server"
   []
   (.log js/console "Websocket")
-  (let [websoc (atom (js/WebSocket. (str "ws://" js/baseaddr)))]
+  (let [websoc (atom (js/WebSocket. (str "ws://" js/window.location.hostname)))]
     (aset @websoc "onmessage" (fn [x] (receive! x)))
     (aset @websoc "onclose" #(.log js/console "Websocket closed"))
     (.log js/console "Websocket created")
