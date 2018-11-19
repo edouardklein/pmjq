@@ -137,8 +137,7 @@ import random
 import tempfile
 from datetime import datetime as dt
 import sys
-from .dsl import run_on_transitions_from_cli
-from .tools import smart_unquote
+from .dsl import run_on_transitions_from_cli, smart_unquote
 from collections import defaultdict
 
 

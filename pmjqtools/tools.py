@@ -10,16 +10,11 @@ easier:
     daemux functions.
 '''
 from .dsl import normalize, pmjq_command, run_on_transitions_from_cli
+from .dsl import smart_unquote
 import os
 import daemux
 import shlex
 from docopt import docopt
-import subprocess
-
-
-def smart_unquote(string):
-    result = subprocess.check_output("echo -n "+string, shell=True)
-    return result.decode()
 
 
 def create_endpoints(transitions):

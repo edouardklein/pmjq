@@ -125,6 +125,12 @@ from collections import defaultdict
 from string import Formatter
 import os
 from docopt import docopt
+import subprocess
+
+
+def smart_unquote(string):
+    result = subprocess.check_output("echo -n "+string, shell=True)
+    return result.decode()
 
 
 def normalize(transition, root=None):
@@ -206,14 +212,14 @@ def trans2dot(transition, include_logs=False):
     dot = ""
     tr = transition.get("id")
     for i in transition.get("inputs", []):
-        name = os.path.dirname(i)
+        name = os.path.dirname(smart_unquote(i))
         dot += dot_nodes_and_edge(node1='dir_'+name, shape1="oval",
                                   color1="blue", label1=name,
                                   node2=tr, shape2="box",
                                   color2="green", label2=tr,
                                   ahead="normal", acolor="blue", aweight="10")
     for o in transition.get("outputs", []):
-        name = os.path.dirname(o)
+        name = os.path.dirname(smart_unquote(o))
         dot += dot_nodes_and_edge(node1=tr, shape1="box",
                                   color1="green", label1=tr,
                                   node2='dir_'+name, shape2="oval",
@@ -221,7 +227,7 @@ def trans2dot(transition, include_logs=False):
                                   ahead="normal", acolor="blue", aweight="10")
     errors = []
     for e in transition.get("errors", []):
-        name = os.path.dirname(e)
+        name = os.path.dirname(smart_unquote(e))
         dot += dot_nodes_and_edge(node1=tr, shape1="box",
                                   color1="green", label1=tr,
                                   node2='dir_'+name, shape2="hexagon",
@@ -237,7 +243,7 @@ def trans2dot(transition, include_logs=False):
                                   ahead="none", acolor="purple", aweight="1")
     logs = transition.get("stderr", "")
     if logs and include_logs:
-        logs = os.path.dirname(logs)
+        logs = os.path.dirname(smart_unquote(logs))
         dot += dot_nodes_and_edge(node1=tr, shape1="box",
                                   color1="green", label1=tr,
                                   node2='dir_'+logs, shape2="octagon",

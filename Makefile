@@ -91,6 +91,8 @@ test_pmjq: pmjq
 	test_cases/bug_quote.sh
 	test_cases/func_sff.sh
 	test_cases/bug_trailing_slash.sh
+	test_cases/bug_quote_transitions.sh
+
 
 test: test_pmjq
 
