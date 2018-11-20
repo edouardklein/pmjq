@@ -129,7 +129,7 @@ from os.path import join as pjoin
 from os.path import abspath
 from docopt import docopt
 from chan import quickthread as go
-from chan import Chan
+from chan import Chan, Timeout
 import inotify.adapters
 import inotify.constants
 import base64
@@ -158,7 +158,7 @@ def default_handler(log):
     send("log:", log)
 
 
-def tail_filter_and_process(fname, filterfunc,
+def tail_filter_and_process(fname, filterfunc, chan,
                             handlerfunc=default_handler, **kwargs):
     """Watch a log file, filter the lines, process the matching lines.
 
@@ -168,6 +168,7 @@ def tail_filter_and_process(fname, filterfunc,
     :param fname: The file to watch
     :param filterfunc: A boolean function of the log line to filter the lines\
         containing the pattern
+    :param chan: The channel used to signal the end of the watch
     :param handlerfunc: A function to be called on each selected line
     :param kwargs: Additionnal keywords arguments that will be passed to\
         handlerfunc
@@ -176,12 +177,20 @@ def tail_filter_and_process(fname, filterfunc,
     sys.stderr.write("Reading log: "+str(fname)+"\n")
     with open(fname, "r") as f:
         f.seek(0, 2)  # Go to EOF
+        log = None
         while True:
+            try:
+                chan.get(timeout=0 if log != "" else 1)
+                break
+            except Timeout:
+                pass
+
             log = f.readline().strip()
             if not log or not filterfunc(log):
                 continue
             # send("calling", str(handlerfunc))
             handlerfunc(log, **kwargs)
+    chan.put(False)
 
 
 def get_error_filter(pattern):
@@ -339,18 +348,19 @@ def main(args):
         send("input:" + indir)
     sys.stderr.write("Watching log files: ")
     sys.stderr.write(str(logs)+"\n")
+    logch = Chan()
     for logfile in logs:
         go(tail_filter_and_process, fname=logfile,
            filterfunc=get_default_filter(job_id),
-           handlerfunc=default_handler)
+           handlerfunc=default_handler, chan=logch)
         go(tail_filter_and_process, fname=logfile,
            filterfunc=waiting_filter,
            handlerfunc=waiting_handler,
-           root=root or "")
+           root=root or "", chan=logch)
         go(tail_filter_and_process, fname=logfile,
            filterfunc=get_error_filter(job_id),
            handlerfunc=error_handler,
-           root=root or "")
+           root=root or "", chan=logch)
     i = 0
     ch = Chan()
     sys.stderr.write("Watching output dirs: ")
@@ -364,6 +374,10 @@ def main(args):
     # Wait for output to be processed
     for _ in range(len(outputs)):
         ch.get()
+    for _ in range(len(logs)*3):
+        logch.put(True)
+    for _ in range(len(logs)*3):
+        logch.get()
     return
 
 
