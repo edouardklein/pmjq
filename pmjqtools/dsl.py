@@ -102,6 +102,16 @@ changes in near real-time.
     | dot -Tpng > smallest_transition.png"
 
 
+GNU Shepherd Service
+=====================
+
+The pmjq_herd command can be used to generate a .scm file that can then be loaded
+by GNU shepherd.
+
+.. command-output:: pmjq_herd --exec smallest_transition.py\
+ '[smallest_transition]'
+
+
 Remote vs. local usage
 ========================
 
@@ -126,6 +136,8 @@ from string import Formatter
 import os
 from docopt import docopt
 import subprocess
+from jinja2 import Template
+import shlex
 
 
 def smart_unquote(string):
@@ -164,6 +176,15 @@ def normalize(transition, root=None):
     return transition
 
 
+def endpoints(transition):
+    """Return the list of endpoints: the dirs that need to exist for the transition
+    to run"""
+    return list(map(lambda d: os.path.dirname(smart_unquote(d)),
+                    sum([transition[x] for x in ['inputs', 'outputs', 'errors']
+                         if x in transition], []) +
+                    ([transition['stderr']] if 'stderr' in transition else [])))
+
+
 def pmjq_command(transition, redirect="&>"):
     "Return the shell command that will make pmjq run the given transition"
     transition = normalize(transition)
@@ -185,6 +206,18 @@ def pmjq_command(transition, redirect="&>"):
     if "log" in transition:
         answer += redirect + " " + transition["log"]
     return answer
+
+
+def pmjq_shepherd(transition):
+    "Return the guile code of a shepherd service for the given transition"
+    logless_t = transition.copy()  # We need the command without the redirect
+    if 'log' in transition:
+        del logless_t['log']
+    cmd = pmjq_command(logless_t)
+    return HERD_BODY.render(id=transition['id'],
+                            endpoints=endpoints(transition),
+                            cmd_args='"' + '" "'.join(shlex.split(cmd)) + '"',
+                            log=transition.get('log', None))
 
 
 EDGE_TEMPLATE = '''
@@ -332,3 +365,69 @@ def cmd():
         for t in transitions:
             print(pmjq_command(t))
     run_on_transitions_from_cli(arguments, print_commands)
+
+HERD_HEADER=Template("""(define-module (gnu services toto)
+  #:use-module (shepherd service)
+  #:use-module (shepherd support)
+  #:use-module (oop goops)
+  #:export ({% for id in ids %}{{id}}-service {% endfor %}))
+
+""")
+
+HERD_BODY=Template("""(define {{id}}-service
+  (make <service>
+    #:docstring "PMJQ Transition {{id}}"
+    #:provides '({{id}})
+    #:requires '()
+    #:respawn? #t
+    #:start
+    (lambda args
+      (map (lambda (endpoint)
+             (unless (file-exists? endpoint)
+               (local-output (string-append "Creating missing endpoint " endpoint))
+               (mkdir-p endpoint)))
+           '({% for ep in endpoints %}"{{ep}}" {% endfor %}))
+      ((make-forkexec-constructor
+        (list
+         {{cmd_args}})
+        {% if log %}
+        #:log-file "{{log}}"
+        {%- endif -%}
+        )))
+    #:stop
+    (lambda (running . args)
+      ((make-kill-destructor 2) ;SIGINT
+       (slot-ref {{id}}-service 'running))
+	    #f)
+    #:actions
+    (make-actions
+     (help
+      "Show the help message"
+      (lambda _
+        (local-output "This service can start, stop and display the status of the {{id}} pmjq transition."))))))
+""")
+
+HERD_FOOTER=Template("""
+(register-services {% for id in ids %}{{id}}-service {% endfor %})
+""")
+
+
+def herd():
+    """pmjq_shepherd: print a guile description of a shepherd service that will run
+    the given transitions
+
+    Usage:
+    pmjq_herd [--exec=<exec.py>] <eval>
+
+    Options:
+      --exec=<exec.py>       Specify a Python file to be exec()d before <eval>
+                             is eval()ed
+    """
+    arguments = docopt(cmd.__doc__, version='pmjq_herd 1.0.0β')
+
+    def print_services(transitions):
+        print(HERD_HEADER.render(ids=[t['id'] for t in transitions]))
+        for t in transitions:
+            print(pmjq_shepherd(t))
+        print(HERD_FOOTER.render(ids=[t['id'] for t in transitions]))
+    run_on_transitions_from_cli(arguments, print_services)

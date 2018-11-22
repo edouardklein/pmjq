@@ -10,7 +10,7 @@ easier:
     daemux functions.
 '''
 from .dsl import normalize, pmjq_command, run_on_transitions_from_cli
-from .dsl import smart_unquote
+from .dsl import smart_unquote, endpoints
 import os
 import daemux
 import shlex
@@ -21,10 +21,8 @@ def create_endpoints(transitions):
     """Create the directories needed by the given transitions"""
     for t in transitions:
         t = normalize(t)
-        for endpoint in sum([t[x] for x in ['inputs', 'outputs', 'errors']
-                             if x in t], []) + \
-                ([t['stderr']] if 'stderr' in t else []):
-            os.makedirs(os.path.dirname(smart_unquote(endpoint)),
+        for endpoint in endpoints(t):
+            os.makedirs(endpoint,
                         exist_ok=True)
 
 

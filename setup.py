@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(name='pmjqtools',
       version='1.0.0β',
       install_requires=["daemux", "chan", "inotify", "python-dateutil",
-                        'sphinxcontrib-programoutput', 'docopt'],
+                        'sphinxcontrib-programoutput', 'docopt', "jinja2"],
       description='Supporting tools for the PMJQ distributed computing\
       framework',
       url='http://edouardklein.github.io/pmjq/',
@@ -17,6 +17,7 @@ setup(name='pmjqtools',
       package_data={},
       entry_points={
           'console_scripts': [
+              'pmjq_herd=pmjqtools.dsl:herd',
               'pmjq_viz=pmjqtools.dsl:viz',
               'pmjq_cmd=pmjqtools.dsl:cmd',
               'pmjq_mkendpoints=pmjqtools.tools:mkendpoints',
