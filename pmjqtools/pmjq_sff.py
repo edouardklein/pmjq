@@ -125,6 +125,7 @@ Quick description:
 """
 
 import os
+import shutil
 from os.path import join as pjoin
 from os.path import abspath
 from docopt import docopt
@@ -244,7 +245,7 @@ def move_and_print(directory, pattern, outdir, url, ch, prefix=""):
                 assert os.path.exists(outdir), "No DL folder!"
                 newname = "{}-{}".format(prefix, filename[:-5])
                 outfile = os.path.abspath(pjoin(outdir, newname))
-                os.rename(filpath, outfile)
+                shutil.move(filpath, outfile)
                 send("output:" + pjoin(url, newname))
                 ch.put("done")
                 return
@@ -271,7 +272,7 @@ def handle_inputs(inputs, job_id):
                 f.write(base64.decodebytes(
                     received_so_far[dirname]['data'].encode('utf8')))
                 tname = f.name
-            os.rename(tname, pjoin(dirname, fname))
+            shutil.move(tname, pjoin(dirname, fname))
 
 
 def find_leaves(trans):
