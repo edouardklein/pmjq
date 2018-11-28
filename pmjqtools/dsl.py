@@ -366,7 +366,8 @@ def cmd():
             print(pmjq_command(t))
     run_on_transitions_from_cli(arguments, print_commands)
 
-HERD_HEADER=Template("""(define-module (gnu services toto)
+
+HERD_HEADER = Template("""(define-module (gnu services toto)
   #:use-module (shepherd service)
   #:use-module (shepherd support)
   #:use-module (oop goops)
@@ -374,7 +375,7 @@ HERD_HEADER=Template("""(define-module (gnu services toto)
 
 """)
 
-HERD_BODY=Template("""(define {{id}}-service
+HERD_BODY = Template("""(define {{id}}-service
   (make <service>
     #:docstring "PMJQ Transition {{id}}"
     #:provides '({{id}})
